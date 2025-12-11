@@ -2,10 +2,8 @@ package console
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"io"
-	"os"
 	"os/exec"
 	"os/user"
 	"strings"
@@ -30,31 +28,20 @@ type session struct {
 	streamClient      grpc_v1.RouterService_StreamClient
 	executor          executer.Executer
 	inactiveTimestamp time.Time
+	user              string
 }
 
-func (s *session) getHomedir() string {
-	homedirOnce.Do(func() {
-		var (
-			err  error
-			errs []error
-		)
-
-		homedir, err = os.UserHomeDir()
-		if err == nil && homedir != "" {
-			return
-		}
-		errs = append(errs, fmt.Errorf("os.UserHomeDir: %w", err))
-		var u *user.User
-		u, err = user.Current()
-		if err == nil && u.HomeDir != "" {
-			homedir = u.HomeDir
-			return
-		}
-		errs = append(errs, fmt.Errorf("user.Current: %w", err))
-		s.log.Warnf("unable to get user home directory for console session: %v", errors.Join(errs...))
-		homedir = ""
-	})
-	return homedir
+func (s *session) getHomedir() (string, error) {
+	// It is best to look this up each time it is needed since it can change dynamically at runtime.
+	u, err := user.Lookup(s.user)
+	if err != nil {
+		return "", fmt.Errorf("failed to lookup console user %s: %w", s.user, err)
+	}
+	homedir = u.HomeDir
+	if homedir == "" {
+		return "", fmt.Errorf("home dir is not set for user %s", s.user)
+	}
+	return homedir, nil
 }
 
 func (s *session) close() error {
@@ -70,24 +57,27 @@ func (s *session) close() error {
 }
 
 func (s *session) buildBashCommand(ctx context.Context, metadata *api.DeviceConsoleSessionMetadata) *exec.Cmd {
-	var args []string
+	args := []string{
+		"sudo",
+		"-u", s.user,
+	}
 
 	if metadata.TTY {
-		args = append(args, "-i", "-l")
+		args = append(args, "--login")
 	}
 
 	if metadata.Command != nil && metadata.Command.Command != "" {
-		args = append(args, "-c", strings.Join(append([]string{metadata.Command.Command}, metadata.Command.Args...), " "))
+		args = append(args, strings.Join(append([]string{metadata.Command.Command}, metadata.Command.Args...), " "))
 	}
 
-	ret := s.executor.CommandContext(ctx, "/bin/bash", args...)
+	ret := s.executor.CommandContext(ctx, args[0], args[1:]...)
 
 	if metadata.Term != nil {
 		ret.Env = append(ret.Env, "TERM="+*metadata.Term)
 	}
 
-	h := s.getHomedir()
-	if h != "" {
+	h, err := s.getHomedir()
+	if err == nil {
 		ret.Dir = h
 		ret.Env = append(ret.Env, "HOME="+h)
 	}

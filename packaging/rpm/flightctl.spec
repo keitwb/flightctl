@@ -52,6 +52,7 @@ Summary: Flight Control management agent
 
 Requires: flightctl-selinux = %{version}
 Requires: jq
+Requires: sudo
 
 %description agent
 The flightctl-agent package provides the management agent for the Flight Control fleet management service.
@@ -474,6 +475,9 @@ echo "Flight Control Observability Stack uninstalled."
 
     install -Dpm 0644 packaging/flightctl-services-install.conf %{buildroot}%{_sysconfdir}/flightctl/flightctl-services-install.conf
 
+    mkdir -p ${buildroot}/sysusers.d
+    install -Dpm 0644 packaging/rpm/sysusers.d/flightctl.conf %{buildroot}/%{_sysusersdir}/flightctl.conf
+
     # flightctl-services sub-package steps
     # Use the flightctl-standalone render quadlets command to generate quadlet files with the correct image tags.
     #
@@ -627,6 +631,7 @@ fi
     /usr/lib/tmpfiles.d/centos-buildinfo.conf
     /usr/lib/greenboot/check/required.d/20_check_flightctl_agent.sh
     /usr/share/sosreport/flightctl.py
+    %{_sysusersdir}/flightctl.conf
 
 %post agent
 # Ensure /var/lib/flightctl exists immediately for environments where systemd-tmpfiles succeeds or via fallback

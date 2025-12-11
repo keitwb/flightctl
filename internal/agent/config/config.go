@@ -72,6 +72,8 @@ const (
 	DefaultMetricsEnabled = false
 	// DefaultProfilingEnabled controls whether runtime profiling (pprof) is enabled by default.
 	DefaultProfilingEnabled = false
+	// The default user to switch to for console sessions
+	DefaultConsoleUser = "console"
 )
 
 type Config struct {
@@ -141,6 +143,8 @@ type Config struct {
 	// ImagePruning holds all image/artifact pruning-related configuration
 	ImagePruning ImagePruning `json:"image-pruning,omitempty"`
 
+	ConsoleUser string `json:"console-user,omitempty"`
+
 	readWriter fileio.ReadWriter
 }
 
@@ -202,6 +206,7 @@ func NewDefault() *Config {
 		ImagePruning: ImagePruning{
 			Enabled: lo.ToPtr(false),
 		},
+		ConsoleUser: DefaultConsoleUser,
 	}
 
 	if value := os.Getenv(TestRootDirEnvKey); value != "" {

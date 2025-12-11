@@ -1,5 +1,10 @@
 policy_module(flightctl_agent, 1.0.0)
 
+gen_require(`
+  type unconfined_service_t, unconfined_t;
+  type shell_exec_t;
+')
+
 # Security Enhanced Linux Reference
 # https://pages.cs.wisc.edu/~matyas/selinux-policy/
 # https://access.redhat.com/articles/6999267
@@ -29,6 +34,7 @@ domain_type(flightctl_agent_t)
 # appropriate given the massive surface area of control for the agent and the previous constant
 # expansion of this policy when we attempted to explicitly list out the permissions one by one.
 unconfined_domain(flightctl_agent_t)
+domtrans_pattern(flightctl_agent_t, shell_exec_t, unconfined_t)
 role system_r types flightctl_agent_t;
 
 # This is for some reason excluded by the unconfined_domain macro so add it back.
@@ -67,7 +73,4 @@ allow flightctl_agent_hook_t file_type:file entrypoint;
 # REMOVE this once https://github.com/bootc-dev/bootc/issues/1434 is fixed. We don't want to allow
 # it so as not to alter the behavior of bootc, but we can suppress the error as it has been
 # determined to be inoculous by the bootc maintainer.
-gen_require(`
-  type unconfined_service_t;
-')
 dontaudit unconfined_service_t self:capability2 mac_admin;

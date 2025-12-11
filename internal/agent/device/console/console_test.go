@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"os/user"
 	"strings"
 	"sync"
 	"testing"
@@ -74,6 +75,7 @@ func setupVars(t *testing.T) *vars {
 		controller: NewManager(
 			mockGrpcClient,
 			"mydevice",
+			lo.Must(user.Current()).Username,
 			executor,
 			mockWatcher,
 			logger),
