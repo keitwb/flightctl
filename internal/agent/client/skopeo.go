@@ -7,10 +7,12 @@ import (
 	"strings"
 	"time"
 
+	"github.com/flightctl/flightctl/api/core/v1beta1"
 	"github.com/flightctl/flightctl/internal/agent/device/errors"
 	"github.com/flightctl/flightctl/internal/agent/device/fileio"
 	"github.com/flightctl/flightctl/pkg/executer"
 	"github.com/flightctl/flightctl/pkg/log"
+	"github.com/flightctl/flightctl/pkg/userutil"
 )
 
 const (
@@ -38,6 +40,37 @@ type Skopeo struct {
 	log        *log.PrefixLogger
 	timeout    time.Duration
 	readWriter fileio.ReadWriter
+}
+
+// SkopeoFactory creates a skopeo client. A blank username means to use the process user.
+type SkopeoFactory func(v1beta1.Username) (*Skopeo, error)
+
+func NewSkopeoFactory(log *log.PrefixLogger, testRootDir string) SkopeoFactory {
+	return func(username v1beta1.Username) (*Skopeo, error) {
+		writerOptions := []fileio.WriterOption{
+			fileio.WithWriterRootDir(testRootDir),
+		}
+
+		if username != "" {
+			uid, gid, _, err := userutil.LookupUser(username)
+			if err != nil {
+				return nil, err
+			}
+			writerOptions = append(writerOptions,
+				fileio.WithUID(uid),
+				fileio.WithGID(gid),
+			)
+		}
+
+		return NewSkopeo(
+			log,
+			&executer.CommonExecuter{ /* TODO: Add user */ },
+			fileio.NewReadWriter(
+				fileio.NewReader(fileio.WithReaderRootDir(testRootDir)),
+				fileio.NewWriter(writerOptions...),
+			),
+		), nil
+	}
 }
 
 func NewSkopeo(log *log.PrefixLogger, exec executer.Executer, readWriter fileio.ReadWriter) *Skopeo {
