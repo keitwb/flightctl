@@ -49,8 +49,8 @@ type PodmanMonitor struct {
 	actions []lifecycle.Action
 
 	handlers       map[v1beta1.AppType]lifecycle.ActionHandler
-	client         *client.Podman
-	systemdManager systemd.Manager
+	clientFactory  client.PodmanFactory
+	systemdFactory systemd.ManagerFactory
 	rw             fileio.ReadWriter
 
 	log *log.PrefixLogger
@@ -58,8 +58,8 @@ type PodmanMonitor struct {
 
 func NewPodmanMonitor(
 	log *log.PrefixLogger,
-	podman *client.Podman,
-	systemdManager systemd.Manager,
+	podmanFactory client.PodmanFactory,
+	systemdFactory systemd.ManagerFactory,
 	bootTime string,
 	rw fileio.ReadWriter,
 ) *PodmanMonitor {
@@ -70,11 +70,11 @@ func NewPodmanMonitor(
 		startTime = time.Now()
 	}
 	return &PodmanMonitor{
-		client:         podman,
-		systemdManager: systemdManager,
+		clientFactory:  podmanFactory,
+		systemdFactory: systemdFactory,
 		handlers: map[v1beta1.AppType]lifecycle.ActionHandler{
-			v1beta1.AppTypeCompose: lifecycle.NewCompose(log, rw, podman),
-			v1beta1.AppTypeQuadlet: lifecycle.NewQuadlet(log, rw, systemdManager, podman),
+			v1beta1.AppTypeCompose: lifecycle.NewCompose(log, rw, podmanFactory),
+			v1beta1.AppTypeQuadlet: lifecycle.NewQuadlet(log, rw, systemdFactory, podmanFactory),
 		},
 		apps:                   make(map[string]Application),
 		lastEventTime:          bootTime,
@@ -118,7 +118,16 @@ func (m *PodmanMonitor) startMonitor(ctx context.Context) error {
 	events := []string{"create", "init", "start", "stop", "die", "sync", "remove", "exited"}
 	since := m.lastEventTime
 	m.log.Debugf("Replaying podman events since: %s", since)
-	cmd := m.client.EventsSinceCmd(ctx, events, since)
+
+	// TODO: Create multiple clients and aggregate events from multiple users
+	// Right now it just looks at root podman.
+	client, err := m.clientFactory("")
+	if err != nil {
+		cancelFn()
+		return fmt.Errorf("creating podman client: %w", err)
+	}
+
+	cmd := client.EventsSinceCmd(ctx, events, since)
 
 	stdoutPipe, err := cmd.StdoutPipe()
 	if err != nil {
@@ -667,7 +676,13 @@ func (m *PodmanMonitor) updateQuadletContainerStatus(ctx context.Context, app Ap
 		m.log.Errorf("Could not find systemd unit label in event %v", event)
 		return
 	}
-	states, err := m.systemdManager.Show(ctx, systemdUnit, client.WithShowLoadState())
+
+	systemctl, err := m.systemdFactory("")
+	if err != nil {
+		m.log.Errorf("Failed to create systemctl client for %s: %v", systemdUnit, err)
+		return
+	}
+	states, err := systemctl.Show(ctx, systemdUnit, client.WithShowLoadState())
 	if err != nil || len(states) == 0 {
 		m.log.Errorf("Could not show systemd unit: %s state: %v", systemdUnit, err)
 		return
@@ -679,7 +694,7 @@ func (m *PodmanMonitor) updateQuadletContainerStatus(ctx context.Context, app Ap
 		return
 	}
 
-	restarts, err := m.systemdManager.Show(ctx, systemdUnit, client.WithShowRestarts())
+	restarts, err := systemctl.Show(ctx, systemdUnit, client.WithShowRestarts())
 	if err != nil || len(restarts) == 0 {
 		m.log.Errorf("Could not show systemd unit: %s restarts: %v", systemdUnit, err)
 		// default to no restarts similar to how compose handles it.
@@ -699,7 +714,12 @@ func (m *PodmanMonitor) updateQuadletContainerStatus(ctx context.Context, app Ap
 }
 
 func (m *PodmanMonitor) updateComposeContainerStatus(ctx context.Context, app Application, event *client.PodmanEvent) {
-	inspectData, err := m.inspectContainer(ctx, event.ID)
+	client, err := m.clientFactory("")
+	if err != nil {
+		m.log.Errorf("Failed to create podman client for %s: %v", app.Name(), err)
+		return
+	}
+	inspectData, err := m.inspectContainer(ctx, event.ID, client)
 	if err != nil {
 		if errors.Is(err, errors.ErrNotFound) {
 			m.log.Debugf("Container %s not found; likely removed during app restart", event.ID)
@@ -736,8 +756,8 @@ func (m *PodmanMonitor) getContainerRestarts(inspectData []client.PodmanInspect)
 	return restarts, nil
 }
 
-func (m *PodmanMonitor) inspectContainer(ctx context.Context, containerID string) ([]client.PodmanInspect, error) {
-	resp, err := m.client.Inspect(ctx, containerID)
+func (m *PodmanMonitor) inspectContainer(ctx context.Context, containerID string, podman *client.Podman) ([]client.PodmanInspect, error) {
+	resp, err := podman.Inspect(ctx, containerID)
 	if err != nil {
 		return nil, err
 	}

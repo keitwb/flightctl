@@ -251,9 +251,10 @@ func (a *Agent) Run(ctx context.Context) error {
 	applicationsManager := applications.NewManager(
 		a.log,
 		deviceReadWriter,
+		podmanClientFactory,
 		rootPodmanClient,
 		systemInfoManager,
-		rootSystemdManager,
+		systemdManagerFactory,
 	)
 
 	// register the application manager with the shutdown manager

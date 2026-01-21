@@ -64,7 +64,10 @@ func TestComposeEnsurePodmanVolumeRetainReseeds(t *testing.T) {
 
 	logger := log.NewPrefixLogger("test")
 	podman := client.NewPodman(logger, mockExec, readWriter, testutil.NewPollConfig())
-	compose := NewCompose(logger, mockWriter, podman)
+	podmanFactory := func(user api.Username) (*client.Podman, error) {
+		return podman, nil
+	}
+	compose := NewCompose(logger, mockWriter, podmanFactory)
 
 	mountPath := "/var/lib/containers/storage/volumes/app-123-vol1/_data"
 
@@ -84,6 +87,7 @@ func TestComposeEnsurePodmanVolumeRetainReseeds(t *testing.T) {
 			ReclaimPolicy: api.Retain,
 		},
 		nil,
+		podman,
 	)
 	require.NoError(t, err)
 }

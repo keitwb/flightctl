@@ -38,6 +38,8 @@ type Action struct {
 	AppType v1beta1.AppType
 	// Path to the application
 	Path string
+	// User that owns the app. Blank means the same user as the current process.
+	User v1beta1.Username
 	// Embedded is true if the application is embedded in the device
 	Embedded bool
 	// Volumes is a list of volume names related to this application

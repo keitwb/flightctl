@@ -25,11 +25,12 @@ const (
 var _ Manager = (*manager)(nil)
 
 type manager struct {
-	podmanMonitor *PodmanMonitor
-	podmanClient  *client.Podman
-	readWriter    fileio.ReadWriter
-	log           *log.PrefixLogger
-	bootTime      string
+	podmanMonitor    *PodmanMonitor
+	podmanFactory    client.PodmanFactory
+	rootPodmanClient *client.Podman
+	readWriter       fileio.ReadWriter
+	log              *log.PrefixLogger
+	bootTime         string
 
 	// cache of extracted nested OCI targets
 	ociTargetCache *provider.OCITargetCache
@@ -41,19 +42,21 @@ type manager struct {
 func NewManager(
 	log *log.PrefixLogger,
 	readWriter fileio.ReadWriter,
-	podmanClient *client.Podman,
+	podmanFactory client.PodmanFactory,
+	rootPodmanClient *client.Podman,
 	systemInfo systeminfo.Manager,
-	systemdManager systemd.Manager,
+	systemdFactory systemd.ManagerFactory,
 ) Manager {
 	bootTime := systemInfo.BootTime()
 	return &manager{
-		readWriter:     readWriter,
-		podmanMonitor:  NewPodmanMonitor(log, podmanClient, systemdManager, bootTime, readWriter),
-		podmanClient:   podmanClient,
-		log:            log,
-		bootTime:       bootTime,
-		ociTargetCache: provider.NewOCITargetCache(),
-		appDataCache:   provider.NewAppDataCache(),
+		readWriter:       readWriter,
+		podmanMonitor:    NewPodmanMonitor(log, podmanFactory, systemdFactory, bootTime, readWriter),
+		podmanFactory:    podmanFactory,
+		rootPodmanClient: rootPodmanClient,
+		log:              log,
+		bootTime:         bootTime,
+		ociTargetCache:   provider.NewOCITargetCache(),
+		appDataCache:     provider.NewAppDataCache(),
 	}
 }
 
@@ -113,7 +116,7 @@ func (m *manager) BeforeUpdate(ctx context.Context, desired *v1beta1.DeviceSpec)
 	providers, err := provider.FromDeviceSpec(
 		ctx,
 		m.log,
-		m.podmanMonitor.client,
+		m.rootPodmanClient,
 		m.readWriter,
 		desired,
 		provider.WithEmbedded(m.bootTime),
@@ -270,17 +273,17 @@ func (m *manager) collectNestedTargets(
 		var exists bool
 
 		// Check if it's an image first (most common case)
-		if m.podmanClient.ImageExists(ctx, imageRef) {
+		if m.rootPodmanClient.ImageExists(ctx, imageRef) {
 			ociType = dependency.OCITypeImage
 			exists = true
-			digest, err = m.podmanClient.ImageDigest(ctx, imageRef)
+			digest, err = m.rootPodmanClient.ImageDigest(ctx, imageRef)
 			if err != nil {
 				return nil, false, nil, fmt.Errorf("getting image digest for %s: %w", imageRef, err)
 			}
-		} else if m.podmanClient.ArtifactExists(ctx, imageRef) {
+		} else if m.rootPodmanClient.ArtifactExists(ctx, imageRef) {
 			ociType = dependency.OCITypeArtifact
 			exists = true
-			digest, err = m.podmanClient.ArtifactDigest(ctx, imageRef)
+			digest, err = m.rootPodmanClient.ArtifactDigest(ctx, imageRef)
 			if err != nil {
 				return nil, false, nil, fmt.Errorf("getting artifact digest for %s: %w", imageRef, err)
 			}
@@ -340,7 +343,7 @@ func (m *manager) extractNestedTargetsForImage(
 	return provider.ExtractNestedTargetsFromImage(
 		ctx,
 		m.log,
-		m.podmanMonitor.client,
+		m.rootPodmanClient,
 		m.readWriter,
 		&appSpec,
 		imageSpec,

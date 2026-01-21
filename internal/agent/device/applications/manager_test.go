@@ -193,6 +193,7 @@ func TestManager(t *testing.T) {
 					mockSystemdMgr.EXPECT().ListUnitsByMatchPattern(gomock.Any(), services).Return([]client.SystemDUnitListEntry{{Unit: services[0], LoadState: "loaded"}}, nil),
 					mockSystemdMgr.EXPECT().Stop(gomock.Any(), services[0]).Return(nil),
 					mockSystemdMgr.EXPECT().ResetFailed(gomock.Any(), services[0]).Return(nil),
+					mockExecSystemdDaemonReload(mockSystemdMgr),
 				)
 				mockExecQuadletCleanup(mockExec, "quadlet-update")
 				gomock.InOrder(
@@ -237,9 +238,15 @@ func TestManager(t *testing.T) {
 			currentProviders, err := provider.FromDeviceSpec(ctx, log, mockPodmanClient, readWriter, tc.current)
 			require.NoError(err)
 
+			var podmanFactory client.PodmanFactory = func(user v1beta1.Username) (*client.Podman, error) {
+				return mockPodmanClient, nil
+			}
+			var systemdFactory systemd.ManagerFactory = func(user v1beta1.Username) (systemd.Manager, error) {
+				return mockSystemdMgr, nil
+			}
 			manager := &manager{
 				readWriter:    readWriter,
-				podmanMonitor: NewPodmanMonitor(log, mockPodmanClient, mockSystemdMgr, "", mockReadWriter),
+				podmanMonitor: NewPodmanMonitor(log, podmanFactory, systemdFactory, "", mockReadWriter),
 				log:           log,
 			}
 
@@ -321,9 +328,15 @@ func TestManagerRemoveApplication(t *testing.T) {
 		// Monitor stops during second AfterUpdate when no apps remain (no mock needed)
 	)
 
+	var podmanFactory client.PodmanFactory = func(user v1beta1.Username) (*client.Podman, error) {
+		return mockPodmanClient, nil
+	}
+	var systemdFactory systemd.ManagerFactory = func(user v1beta1.Username) (systemd.Manager, error) {
+		return mockSystemdMgr, nil
+	}
 	manager := &manager{
 		readWriter:    readWriter,
-		podmanMonitor: NewPodmanMonitor(log, mockPodmanClient, mockSystemdMgr, "", mockReadWriter),
+		podmanMonitor: NewPodmanMonitor(log, podmanFactory, systemdFactory, "", mockReadWriter),
 		log:           log,
 	}
 
@@ -682,13 +695,20 @@ func TestCollectOCITargetsErrorHandling(t *testing.T) {
 					fileio.NewWriter(fileio.WithWriterRootDir(tempDir)),
 				)
 
+				var podmanFactory client.PodmanFactory = func(user v1beta1.Username) (*client.Podman, error) {
+					return mockPodmanClient, nil
+				}
+				var systemdFactory systemd.ManagerFactory = func(user v1beta1.Username) (systemd.Manager, error) {
+					return mockSystemdMgr, nil
+				}
+
 				return &manager{
-					readWriter:     readWriter,
-					podmanMonitor:  NewPodmanMonitor(log, mockPodmanClient, mockSystemdMgr, "", mockReadWriter),
-					podmanClient:   mockPodmanClient,
-					log:            log,
-					ociTargetCache: provider.NewOCITargetCache(),
-					appDataCache:   provider.NewAppDataCache(),
+					readWriter:       readWriter,
+					podmanMonitor:    NewPodmanMonitor(log, podmanFactory, systemdFactory, "", mockReadWriter),
+					rootPodmanClient: mockPodmanClient,
+					log:              log,
+					ociTargetCache:   provider.NewOCITargetCache(),
+					appDataCache:     provider.NewAppDataCache(),
 				}
 			},
 			expectError:   false,
@@ -730,13 +750,19 @@ func TestCollectOCITargetsErrorHandling(t *testing.T) {
 					fileio.NewWriter(fileio.WithWriterRootDir(tempDir)),
 				)
 
+				var podmanFactory client.PodmanFactory = func(user v1beta1.Username) (*client.Podman, error) {
+					return mockPodmanClient, nil
+				}
+				var systemdFactory systemd.ManagerFactory = func(user v1beta1.Username) (systemd.Manager, error) {
+					return mockSystemdMgr, nil
+				}
 				return &manager{
-					readWriter:     readWriter,
-					podmanMonitor:  NewPodmanMonitor(log, mockPodmanClient, mockSystemdMgr, "", mockReadWriter),
-					podmanClient:   mockPodmanClient,
-					log:            log,
-					ociTargetCache: provider.NewOCITargetCache(),
-					appDataCache:   provider.NewAppDataCache(),
+					readWriter:       readWriter,
+					podmanMonitor:    NewPodmanMonitor(log, podmanFactory, systemdFactory, "", mockReadWriter),
+					rootPodmanClient: mockPodmanClient,
+					log:              log,
+					ociTargetCache:   provider.NewOCITargetCache(),
+					appDataCache:     provider.NewAppDataCache(),
 				}
 			},
 			expectError:   true,
