@@ -949,9 +949,15 @@ func validateApplications(apps []ApplicationProviderSpec, fleetTemplate bool) []
 				allErrs = append(allErrs, ValidateContainerImageApplicationSpec(appName, &provider)...)
 			}
 
-			allErrs = append(allErrs, validateHelmApplicationFields(appName, app.AppType, &provider)...)
-
 			volumes = provider.Volumes
+
+		case HelmApplicationProviderType:
+			provider, err := app.AsHelmApplicationProviderSpec()
+			if err != nil {
+				allErrs = append(allErrs, fmt.Errorf("invalid image application provider: %w", err))
+				continue
+			}
+			allErrs = append(allErrs, validateHelmApplicationFields(appName, app.AppType, &provider)...)
 
 		case InlineApplicationProviderType:
 			provider, err := app.AsInlineApplicationProviderSpec()
@@ -998,7 +1004,7 @@ func ValidateContainerImageApplicationSpec(appName string, spec *ImageApplicatio
 	return errs
 }
 
-func validateHelmApplicationFields(appName string, appType AppType, spec *ImageApplicationProviderSpec) []error {
+func validateHelmApplicationFields(appName string, appType AppType, spec *HelmApplicationProviderSpec) []error {
 	var errs []error
 	pathPrefix := fmt.Sprintf("spec.applications[%s]", appName)
 

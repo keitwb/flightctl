@@ -43,6 +43,7 @@ type ApplicationProviderType string
 const (
 	ImageApplicationProviderType  ApplicationProviderType = "image"
 	InlineApplicationProviderType ApplicationProviderType = "inline"
+	HelmApplicationProviderType   ApplicationProviderType = "helm"
 )
 
 type ApplicationVolumeProviderType string

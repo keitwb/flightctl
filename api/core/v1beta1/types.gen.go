@@ -1804,6 +1804,18 @@ type GitHubIntrospectionSpec struct {
 // GitHubIntrospectionSpecType The introspection type.
 type GitHubIntrospectionSpecType string
 
+// HelmApplicationProviderSpec defines model for HelmApplicationProviderSpec.
+type HelmApplicationProviderSpec struct {
+	// Namespace The target namespace for the application deployment.
+	Namespace *string `json:"namespace,omitempty"`
+
+	// Values Configuration values for the application. Supports arbitrarily nested structures.
+	Values *map[string]interface{} `json:"values,omitempty"`
+
+	// ValuesFiles List of values files to apply during deployment. Files are relative paths and applied in array order before user-provided values.
+	ValuesFiles *[]string `json:"valuesFiles,omitempty"`
+}
+
 // HookAction defines model for HookAction.
 type HookAction struct {
 	// If Conditions that must be met for the action to be executed.
@@ -1905,20 +1917,11 @@ type ImageApplicationProviderSpec struct {
 	// Image Reference to the OCI image or artifact for the application package.
 	Image string `json:"image"`
 
-	// Namespace The target namespace for the application deployment.
-	Namespace *string `json:"namespace,omitempty"`
-
 	// Ports Port mappings.
 	Ports *[]ApplicationPort `json:"ports,omitempty"`
 
 	// Resources Resource constraints for the application.
 	Resources *ApplicationResources `json:"resources,omitempty"`
-
-	// Values Configuration values for the application. Supports arbitrarily nested structures.
-	Values *map[string]interface{} `json:"values,omitempty"`
-
-	// ValuesFiles List of values files to apply during deployment. Files are relative paths and applied in array order before user-provided values.
-	ValuesFiles *[]string `json:"valuesFiles,omitempty"`
 
 	// Volumes List of application volumes.
 	Volumes *[]ApplicationVolume `json:"volumes,omitempty"`
@@ -3347,6 +3350,32 @@ func (t *ApplicationProviderSpec) FromInlineApplicationProviderSpec(v InlineAppl
 
 // MergeInlineApplicationProviderSpec performs a merge with any union data inside the ApplicationProviderSpec, using the provided InlineApplicationProviderSpec
 func (t *ApplicationProviderSpec) MergeInlineApplicationProviderSpec(v InlineApplicationProviderSpec) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+// AsHelmApplicationProviderSpec returns the union data inside the ApplicationProviderSpec as a HelmApplicationProviderSpec
+func (t ApplicationProviderSpec) AsHelmApplicationProviderSpec() (HelmApplicationProviderSpec, error) {
+	var body HelmApplicationProviderSpec
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromHelmApplicationProviderSpec overwrites any union data inside the ApplicationProviderSpec as the provided HelmApplicationProviderSpec
+func (t *ApplicationProviderSpec) FromHelmApplicationProviderSpec(v HelmApplicationProviderSpec) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeHelmApplicationProviderSpec performs a merge with any union data inside the ApplicationProviderSpec, using the provided HelmApplicationProviderSpec
+func (t *ApplicationProviderSpec) MergeHelmApplicationProviderSpec(v HelmApplicationProviderSpec) error {
 	b, err := json.Marshal(v)
 	if err != nil {
 		return err
