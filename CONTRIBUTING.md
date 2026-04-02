@@ -2,6 +2,7 @@
 
 Thanks for your interest in contributing to Flight Control, a service for declarative management of fleets of edge devices and their workloads.
 
+
 ## Getting started
 
 - **Developer setup and workflow:** See [docs/developer/README.md](docs/developer/README.md) for prerequisites, building, running locally (kind or Quadlets), and using the CLI and agent VM.
