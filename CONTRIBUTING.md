@@ -1,6 +1,6 @@
 # Contributing to Flight Control
 
-Thank you for your interest in contributing to Flight Control, a service for declarative management of fleets of edge devices and their workloads.
+Thanks for your interest in contributing to Flight Control, a service for declarative management of fleets of edge devices and their workloads.
 
 ## Getting started
 
