@@ -368,7 +368,7 @@ func (h *Harness) PrintAgentLogsIfFailed() {
 // Registered via DeferCleanup in SetTestContext so it runs for every test.
 func (h *Harness) checkLogsForPanicAVC(sinceTime time.Time) {
 	var findings []string
-	sinceArg := sinceTime.UTC().Format(time.RFC3339)
+	sinceArg := sinceTime.UTC().Format(time.DateTime)
 
 	if h.VM != nil {
 		if running, err := h.VM.IsRunning(); err == nil && running {
