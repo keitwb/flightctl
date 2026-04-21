@@ -28,8 +28,6 @@ ca:
 imageBuilderService:
   address: ":8445"
   logLevel: info
-  tlsCertFile: /root/.flightctl/certs/server.crt
-  tlsKeyFile: /root/.flightctl/certs/server.key
   rateLimit:
     enabled: {{.service.rateLimit.enabled}}
     requests: {{if .service.rateLimit.requests}}{{.service.rateLimit.requests}}{{else}}300{{end}}

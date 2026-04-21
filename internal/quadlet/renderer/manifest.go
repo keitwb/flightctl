@@ -65,6 +65,10 @@ func servicesManifest(config *RendererConfig) []InstallAction {
 		{Action: ActionCopyFile, Source: "deploy/podman/flightctl-cli-artifacts/flightctl-cli-artifacts-certs.volume", Destination: filepath.Join(config.QuadletFilesOutputDir, "flightctl-cli-artifacts-certs.volume"), Template: false, Mode: RegularFileMode},
 		{Action: ActionCopyDir, Source: "deploy/podman/flightctl-cli-artifacts/flightctl-cli-artifacts-config/", Destination: filepath.Join(config.ReadOnlyConfigOutputDir, "flightctl-cli-artifacts/"), Template: false, Mode: RegularFileMode},
 
+		// Gateway service
+		{Action: ActionCopyFile, Source: "deploy/podman/flightctl-gateway/flightctl-gateway.container", Destination: filepath.Join(config.QuadletFilesOutputDir, "flightctl-gateway.container"), Template: true, Mode: RegularFileMode},
+		{Action: ActionCopyDir, Source: "deploy/podman/flightctl-gateway/flightctl-gateway-config/", Destination: filepath.Join(config.ReadOnlyConfigOutputDir, "flightctl-gateway/"), Template: false, Mode: RegularFileMode},
+
 		// ImageBuilder API service
 		{Action: ActionCopyFile, Source: "deploy/podman/flightctl-imagebuilder-api/flightctl-imagebuilder-api.container", Destination: filepath.Join(config.QuadletFilesOutputDir, "flightctl-imagebuilder-api.container"), Template: true, Mode: RegularFileMode},
 		{Action: ActionCopyDir, Source: "deploy/podman/flightctl-imagebuilder-api/flightctl-imagebuilder-api-config/", Destination: filepath.Join(config.ReadOnlyConfigOutputDir, "flightctl-imagebuilder-api/"), Template: false, Mode: RegularFileMode},

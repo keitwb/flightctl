@@ -100,6 +100,7 @@ type RendererConfig struct {
 	Prometheus         ImageConfig `mapstructure:"prometheus"`
 	TelemetryGateway   ImageConfig `mapstructure:"telemetry-gateway"`
 	UserinfoProxy      ImageConfig `mapstructure:"userinfo-proxy"`
+	Gateway            ImageConfig `mapstructure:"gateway"`
 }
 
 func NewRendererConfig() *RendererConfig {
@@ -314,6 +315,7 @@ func (config *RendererConfig) ApplyFlightctlServicesTagOverride(log logrus.Field
 	config.ImagebuilderWorker.Tag = tag
 	config.TelemetryGateway.Tag = tag
 	config.UserinfoProxy.Tag = tag
+	config.Gateway.Tag = tag
 
 	if config.FlightctlUiTagOverride {
 		// For release builds, UI tag must be overridden

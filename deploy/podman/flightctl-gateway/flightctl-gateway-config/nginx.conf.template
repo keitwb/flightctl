@@ -1,0 +1,98 @@
+worker_processes auto;
+error_log stderr;
+pid /run/nginx.pid;
+
+http {
+  access_log /dev/stdout;
+
+  ssl_protocols TLSv1.3;
+  ssl_ecdh_curve auto;
+  ssl_prefer_server_ciphers off;
+  ssl_stapling on;
+  ssl_stapling_verify on;
+
+  server {
+    server_name {{.global.baseDomain}};
+    listen [::]:8443 ssl http2;
+    ssl_certificate /etc/flightctl/pki/flightctl-gateway/server.crt;
+    ssl_certificate_key /etc/flightctl/pki/flightctl-gateway/server.key;
+
+    # These two paths below do not require the org id query param.
+    location /api/v1/organizations {
+      proxy_pass http://flightctl-api:3080;
+    }
+
+    location /api/v1/auth/config {
+      proxy_pass http://flightctl-api:3080;
+    }
+
+    location /api/ {
+      if ($http_x_flightctl_organization_id = "") {
+        return 428 '{"error": "Organization selection required", "code": "ORGANIZATION_REQUIRED"}';
+      }
+      set $args "$args&org_id=$http_x_flightctl_organization_id";
+
+      proxy_pass http://flightctl-api:3080;
+    }
+    
+    location /alerts/ {
+      if ($http_x_flightctl_organization_id = "") {
+        return 428 '{"error": "Organization selection required", "code": "ORGANIZATION_REQUIRED"}';
+      }
+      set $args "$args&filter=org_id%3d$http_x_flightctl_organization_id";
+
+      proxy_pass http://flightctl-alertmanager-proxy:8080/;
+    }
+
+    location /pam-issuer/ {
+      proxy_pass http://flightctl-pam-issuer:8444/;
+    }
+
+    location /imagebuilder/ {
+      if ($http_x_flightctl_organization_id = "") {
+        return 428 '{"error": "Organization selection required", "code": "ORGANIZATION_REQUIRED"}';
+      }
+      set $args "$args&org_id=$http_x_flightctl_organization_id";
+
+      proxy_pass http://flightctl-imagebuilder-api:8445/;
+    }
+
+    location / {
+      proxy_pass http://flightctl-ui:8080/;
+    }
+  }
+
+  {{if .global.keepOldPorts}}
+  # Backwards compatibility for the API server if needed.
+  server {
+    server_name {{.global.basedomain}};
+    listen [::]:3443 ssl http2;
+
+    ssl_certificate /etc/flightctl/pki/flightctl-api/server.crt;
+    ssl_certificate_key /etc/flightctl/pki/flightctl-api/server.key;
+
+    location / {
+      proxy_pass http://flightctl-api:3080/;
+    }
+  }
+  {{- end }}
+}
+
+# We need to keep the passthroughs to the mTLS authenticated endpoints because certain device
+# information is gathered directly from the client certs.
+
+# Passthrough to the Agent API service
+stream {
+  server {
+    listen [::]:7443 ssl http2;
+    proxy_pass flightctl-api:7443;
+  }
+}
+
+# Passthrough to the Telemetry Gateway service
+stream {
+  server {
+    listen [::]:4317 ssl http2;
+    proxy_pass flightctl-telemetry-gateway:4317;
+  }
+}
