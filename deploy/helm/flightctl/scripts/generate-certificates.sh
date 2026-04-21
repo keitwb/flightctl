@@ -16,6 +16,7 @@ USERINFO_PROXY_SANS=()
 NAMESPACE=""
 INTERNAL_NAMESPACE=""
 CREATE_K8S_SECRETS="false"
+WILDCARD_CERT_BASE_DOMAIN=""
 
 # Parse command-line arguments
 usage() {
@@ -26,19 +27,20 @@ Required:
   --cert-dir <dir>              Directory to store certificates
 
 Optional:
-  --api-san <dns>               DNS SAN for flightctl-api (can be specified multiple times)
-  --telemetry-san <dns>         DNS SAN for telemetry-gateway (can be specified multiple times)
-  --alertmanager-proxy-san <dns> DNS SAN for alertmanager-proxy (can be specified multiple times)
-  --pam-issuer-san <dns>        DNS SAN for flightctl-pam-issuer (can be specified multiple times)
-  --ui-san <dns>                DNS SAN for flightctl-ui (can be specified multiple times)
-  --cli-artifacts-san <dns>     DNS SAN for flightctl-cli-artifacts (can be specified multiple times)
-  --imagebuilder-api-san <dns>  DNS SAN for flightctl-imagebuilder-api (can be specified multiple times)
-  --prometheus-san <dns>        DNS SAN for flightctl-prometheus (can be specified multiple times)
-  --grafana-san <dns>           DNS SAN for flightctl-grafana (can be specified multiple times)
-  --userinfo-proxy-san <dns>    DNS SAN for flightctl-userinfo-proxy (can be specified multiple times)
-  --create-k8s-secrets          Create Kubernetes secrets using oc/kubectl
-  --namespace <ns>              Kubernetes namespace (required if --create-k8s-secrets is set)
-  --internal-namespace <ns>      Internal namespace to copy CA secrets to (optional)
+  --api-san <dns>                      DNS SAN for flightctl-api (can be specified multiple times)
+  --telemetry-san <dns>                DNS SAN for telemetry-gateway (can be specified multiple times)
+  --alertmanager-proxy-san <dns>       DNS SAN for alertmanager-proxy (can be specified multiple times)
+  --pam-issuer-san <dns>               DNS SAN for flightctl-pam-issuer (can be specified multiple times)
+  --ui-san <dns>                       DNS SAN for flightctl-ui (can be specified multiple times)
+  --cli-artifacts-san <dns>            DNS SAN for flightctl-cli-artifacts (can be specified multiple times)
+  --imagebuilder-api-san <dns>         DNS SAN for flightctl-imagebuilder-api (can be specified multiple times)
+  --prometheus-san <dns>               DNS SAN for flightctl-prometheus (can be specified multiple times)
+  --grafana-san <dns>                  DNS SAN for flightctl-grafana (can be specified multiple times)
+  --userinfo-proxy-san <dns>           DNS SAN for flightctl-userinfo-proxy (can be specified multiple times)
+  --create-k8s-secrets                 Create Kubernetes secrets using oc/kubectl
+  --namespace <ns>                     Kubernetes namespace (required if --create-k8s-secrets is set)
+  --internal-namespace <ns>            Internal namespace to copy CA secrets to (optional)
+  --create-wildcard-cert <base_domain> Create a wildcard cert with CN=*.<base_domain> that covers all services
 EOF
     exit 1
 }
@@ -100,6 +102,10 @@ while [[ $# -gt 0 ]]; do
             ;;
         --internal-namespace)
             INTERNAL_NAMESPACE="$2"
+            shift 2
+            ;;
+        --create-wildcard-cert)
+            WILDCARD_CERT_BASE_DOMAIN="$2"
             shift 2
             ;;
         -h|--help)
@@ -342,38 +348,54 @@ else
 fi
 
 # Step 3: PAM Issuer Token Signer CA (intermediate CA signed by Flight Control CA)
-if [[ ${#PAM_ISSUER_SANS[@]} -gt 0 ]]; then
-    mkdir -p "$CERT_DIR/flightctl-pam-issuer"
+mkdir -p "$CERT_DIR/flightctl-pam-issuer"
 
-    PAM_ISSUER_TOKEN_SIGNER_CA_KEY="$CERT_DIR/flightctl-pam-issuer/token-signer.key"
-    PAM_ISSUER_TOKEN_SIGNER_CA_CERT="$CERT_DIR/flightctl-pam-issuer/token-signer.crt"
+PAM_ISSUER_TOKEN_SIGNER_CA_KEY="$CERT_DIR/flightctl-pam-issuer/token-signer.key"
+PAM_ISSUER_TOKEN_SIGNER_CA_CERT="$CERT_DIR/flightctl-pam-issuer/token-signer.crt"
 
-    if [[ -f "$PAM_ISSUER_TOKEN_SIGNER_CA_CERT" ]] && [[ -f "$PAM_ISSUER_TOKEN_SIGNER_CA_KEY" ]]; then
-        echo "[3/14] Skipped generation of PAM Issuer Token Signer CA certificate (already exists)"
-    else
-        generate_intermediate_ca "flightctl-pam-issuer-token-signer-ca" \
-            "$PAM_ISSUER_TOKEN_SIGNER_CA_KEY" "$PAM_ISSUER_TOKEN_SIGNER_CA_CERT" \
-            "$FLIGHTCTL_CA_CERT" "$FLIGHTCTL_CA_KEY"
-        echo "[3/14] Generated PAM Issuer Token Signer CA certificate (10 years, ECDSA P-256)"
-    fi
+if [[ -f "$PAM_ISSUER_TOKEN_SIGNER_CA_CERT" ]] && [[ -f "$PAM_ISSUER_TOKEN_SIGNER_CA_KEY" ]]; then
+    echo "[3/14] Skipped generation of PAM Issuer Token Signer CA certificate (already exists)"
 else
-    echo "[3/14] Skipped generation of PAM Issuer Token Signer CA certificate (no PAM Issuer SANs specified)"
+    generate_intermediate_ca "flightctl-pam-issuer-token-signer-ca" \
+        "$PAM_ISSUER_TOKEN_SIGNER_CA_KEY" "$PAM_ISSUER_TOKEN_SIGNER_CA_CERT" \
+        "$FLIGHTCTL_CA_CERT" "$FLIGHTCTL_CA_KEY"
+    echo "[3/14] Generated PAM Issuer Token Signer CA certificate (10 years, ECDSA P-256)"
+fi
+
+if [[ -n "$WILDCARD_CERT_BASE_DOMAIN" ]]; then
+  mkdir -p "$CERT_DIR/flightctl-wildcard"
+
+  WILDCARD_KEY="$CERT_DIR/flightctl-wildcard/server.key"
+  WILDCARD_CERT="$CERT_DIR/flightctl-wildcard/server.crt"
+
+  if [[ -f "$WILDCARD_CERT" ]] && [[ -f "$WILDCARD_KEY" ]]; then
+      echo "[4/14] Skipped generation of API Server TLS certificate (already exists)"
+  else
+      generate_server_cert "*.${WILDCARD_CERT_BASE_DOMAIN}" \
+          "$WILDCARD_KEY" "$WILDCARD_CERT" \
+          "$FLIGHTCTL_CA_CERT" "$FLIGHTCTL_CA_KEY"
+      echo "[4/14] Generated API Server TLS certificate (2 years, ECDSA P-256)"
+  fi
 fi
 
 # Step 4: API Server TLS certificate
-mkdir -p "$CERT_DIR/flightctl-api"
+if [[ ${#API_SANS[@]} -gt 0 ]]; then
+  mkdir -p "$CERT_DIR/flightctl-api"
 
-API_SERVER_KEY="$CERT_DIR/flightctl-api/server.key"
-API_SERVER_CERT="$CERT_DIR/flightctl-api/server.crt"
+  API_SERVER_KEY="$CERT_DIR/flightctl-api/server.key"
+  API_SERVER_CERT="$CERT_DIR/flightctl-api/server.crt"
 
-if [[ -f "$API_SERVER_CERT" ]] && [[ -f "$API_SERVER_KEY" ]]; then
-    echo "[4/14] Skipped generation of API Server TLS certificate (already exists)"
+  if [[ -f "$API_SERVER_CERT" ]] && [[ -f "$API_SERVER_KEY" ]]; then
+      echo "[4/14] Skipped generation of API Server TLS certificate (already exists)"
+  else
+      generate_server_cert "flightctl-api" \
+          "$API_SERVER_KEY" "$API_SERVER_CERT" \
+          "$FLIGHTCTL_CA_CERT" "$FLIGHTCTL_CA_KEY" \
+          "${API_SANS[@]}"
+      echo "[4/14] Generated API Server TLS certificate (2 years, ECDSA P-256)"
+  fi
 else
-    generate_server_cert "flightctl-api" \
-        "$API_SERVER_KEY" "$API_SERVER_CERT" \
-        "$FLIGHTCTL_CA_CERT" "$FLIGHTCTL_CA_KEY" \
-        "${API_SANS[@]}"
-    echo "[4/14] Generated API Server TLS certificate (2 years, ECDSA P-256)"
+    echo "[4/14] Skipped generation of API Server TLS certificate (no API SANs specified)"
 fi
 
 # Step 5: PAM Issuer Server TLS certificate

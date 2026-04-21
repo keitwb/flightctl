@@ -1,0 +1,1 @@
+set $base_domain {{ .global.baseDomain }}

@@ -16,8 +16,6 @@ Volume=/etc/flightctl/flightctl-cli-artifacts/nginx.conf:/etc/nginx/nginx.conf:r
 Volume=/etc/flightctl/flightctl-cli-artifacts/nginx.conf.ipv4:/etc/nginx/nginx.conf.ipv4:ro,z
 Volume=/etc/flightctl/flightctl-cli-artifacts/nginx.conf.ipv6:/etc/nginx/nginx.conf.ipv6:ro,z
 
-PublishPort=8090:8090
-
 [Service]
 Restart=always
 RestartSec=30

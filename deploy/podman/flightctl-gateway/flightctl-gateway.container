@@ -1,0 +1,23 @@
+[Unit]
+Description=Flight Control Gateway service
+After=flightctl-gateway-init.service
+Wants=flightctl-gateway-init.service
+PartOf=flightctl.target
+
+[Container]
+ContainerName=flightctl-gateway
+Image={{ .CliArtifacts.Image }}:{{ .CliArtifacts.Tag }}
+Pull=missing
+Network=flightctl.network
+AddHost=%H:host-gateway
+Volume=flightctl-gateway-certs:/app/certs:ro,z
+Volume=/etc/flightctl/flightctl-gateway/nginx.conf:/etc/nginx/nginx.conf:ro,z
+Volume=/etc/flightctl/flightctl-gateway/vars.conf:/etc/nginx/vars.conf:ro,z
+
+PublishPort=8090:8090
+
+[Service]
+Restart=always
+RestartSec=30
+
+ExecStartPre=/usr/bin/flightctl-standalone render template --input-file /usr/share/flightctl/flightctl-gateway/vars.conf.template --output-file /etc/flightctl/flightctl-gateway/vars.conf
