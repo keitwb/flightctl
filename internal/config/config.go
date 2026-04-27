@@ -117,6 +117,7 @@ type svcConfig struct {
 	BaseUrl                string           `json:"baseUrl,omitempty"`
 	BaseAgentEndpointUrl   string           `json:"baseAgentEndpointUrl,omitempty"`
 	BaseUIUrl              string           `json:"baseUIUrl,omitempty"`
+	DisableTLS             bool             `json:"disableTLS,omitempty"`
 	SrvCertFile            string           `json:"srvCertificateFile,omitempty"`
 	SrvKeyFile             string           `json:"srvKeyFile,omitempty"`
 	ServerCertName         string           `json:"serverCertName,omitempty"`
@@ -152,7 +153,6 @@ type ImageBuilderServiceConfig struct {
 	LogLevel              string           `json:"logLevel,omitempty"`
 	TLSCertFile           string           `json:"tlsCertFile,omitempty"`
 	TLSKeyFile            string           `json:"tlsKeyFile,omitempty"`
-	InsecureSkipTlsVerify bool             `json:"insecureSkipTlsVerify,omitempty"`
 	HttpReadTimeout       util.Duration    `json:"httpReadTimeout,omitempty"`
 	HttpReadHeaderTimeout util.Duration    `json:"httpReadHeaderTimeout,omitempty"`
 	HttpWriteTimeout      util.Duration    `json:"httpWriteTimeout,omitempty"`
@@ -264,11 +264,12 @@ type kvConfig struct {
 }
 
 type alertmanagerConfig struct {
-	Hostname   string `json:"hostname,omitempty"`
-	Port       uint   `json:"port,omitempty"`
-	MaxRetries int    `json:"maxRetries,omitempty"`
-	BaseDelay  string `json:"baseDelay,omitempty"`
-	MaxDelay   string `json:"maxDelay,omitempty"`
+	Hostname           string `json:"hostname,omitempty"`
+	Port               uint   `json:"port,omitempty"`
+	MaxRetries         int    `json:"maxRetries,omitempty"`
+	BaseDelay          string `json:"baseDelay,omitempty"`
+	MaxDelay           string `json:"maxDelay,omitempty"`
+	ProxyListenAddress string `json:"proxyListenAddress,omitempty"`
 }
 
 type authConfig struct {
@@ -287,6 +288,8 @@ type authConfig struct {
 type PAMOIDCIssuer struct {
 	// Address is the listen address for the PAM issuer service (e.g., ":8444")
 	Address string `json:"address,omitempty"`
+	// If true, the PAM issuer service will listen on a plaintext socket instead of TLS.
+	DisableTLS bool `json:"disableTLS,omitempty"`
 	// Issuer is the base URL for the OIDC issuer (e.g., "https://flightctl.example.com")
 	Issuer string `json:"issuer,omitempty"`
 	// ClientID is the OAuth2 client ID for this issuer
@@ -593,22 +596,6 @@ func WithAAPAuth(apiUrl, externalApiUrl string) ConfigOption {
 	}
 }
 
-func WithPAMOIDCIssuer(issuer, clientId, clientSecret, pamService string) ConfigOption {
-	return func(c *Config) {
-		if c.Auth == nil {
-			c.Auth = &authConfig{
-				DynamicProviderCacheTTL: util.Duration(5 * time.Second),
-			}
-		}
-		c.Auth.PAMOIDCIssuer = &PAMOIDCIssuer{
-			Issuer:       issuer,
-			ClientID:     clientId,
-			ClientSecret: clientSecret,
-			PAMService:   pamService,
-		}
-	}
-}
-
 func ConfigDir() string {
 	return filepath.Join(util.MustString(os.UserHomeDir), "."+appName)
 }
@@ -643,6 +630,7 @@ func NewDefault(opts ...ConfigOption) *Config {
 			CertStore:              CertificateDir(),
 			BaseUrl:                "https://localhost:3443",
 			BaseAgentEndpointUrl:   "https://localhost:7443",
+			DisableTLS:             false,
 			ServerCertName:         "server",
 			ServerCertValidityDays: 730,
 			LogLevel:               "info",
@@ -673,11 +661,12 @@ func NewDefault(opts ...ConfigOption) *Config {
 			Password: "adminpass",
 		},
 		Alertmanager: &alertmanagerConfig{
-			Hostname:   "localhost",
-			Port:       9093,
-			MaxRetries: 3,
-			BaseDelay:  "500ms",
-			MaxDelay:   "10s",
+			Hostname:           "localhost",
+			Port:               9093,
+			MaxRetries:         3,
+			BaseDelay:          "500ms",
+			MaxDelay:           "10s",
+			ProxyListenAddress: ":8443",
 		},
 		TelemetryGateway: &telemetryGatewayConfig{
 			LogLevel: "info",
@@ -984,6 +973,9 @@ func applyPAMOIDCIssuerDefaults(c *Config) {
 		return
 	}
 
+	if c.Auth.PAMOIDCIssuer.Address == "" {
+		c.Auth.PAMOIDCIssuer.Address = ":8444"
+	}
 	if c.Auth.PAMOIDCIssuer.PAMService == "" {
 		c.Auth.PAMOIDCIssuer.PAMService = "flightctl"
 	}
