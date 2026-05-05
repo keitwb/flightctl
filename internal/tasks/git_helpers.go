@@ -1,6 +1,7 @@
 package tasks
 
 import (
+	"context"
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/base64"
@@ -20,6 +21,7 @@ import (
 	"github.com/go-git/go-billy/v5"
 	"github.com/go-git/go-billy/v5/memfs"
 	"github.com/go-git/go-git/v5"
+	gitconfig "github.com/go-git/go-git/v5/config"
 	gitplumbing "github.com/go-git/go-git/v5/plumbing"
 	"github.com/go-git/go-git/v5/plumbing/transport"
 	gitclient "github.com/go-git/go-git/v5/plumbing/transport/client"
@@ -85,6 +87,50 @@ func CloneGitRepo(repo *domain.Repository, revision *string, depth *int, cfg *co
 	}
 
 	return mfs, hash, nil
+}
+
+// GitLsRemote resolves a git ref (branch name, tag name, or full ref path)
+// to its commit SHA without cloning the repository. Error messages are
+// sanitized to prevent credential leakage.
+func GitLsRemote(ctx context.Context, repoURL string, ref string, auth transport.AuthMethod) (string, error) {
+	if repoURL == "" {
+		return "", fmt.Errorf("repository URL must not be empty")
+	}
+
+	remote := git.NewRemote(gitmemory.NewStorage(), &gitconfig.RemoteConfig{
+		Name: "origin",
+		URLs: []string{repoURL},
+	})
+
+	refs, err := remote.ListContext(ctx, &git.ListOptions{Auth: auth})
+	if err != nil {
+		return "", fmt.Errorf("failed to list remote refs: %s", sanitizeGitError(err))
+	}
+
+	candidates := []string{
+		ref,
+		"refs/heads/" + ref,
+		"refs/tags/" + ref,
+	}
+
+	for _, r := range refs {
+		refName := r.Name().String()
+		for _, candidate := range candidates {
+			if refName == candidate {
+				return r.Hash().String(), nil
+			}
+		}
+	}
+
+	return "", fmt.Errorf("ref %q not found in remote %s", ref, repoURL)
+}
+
+func sanitizeGitError(err error) string {
+	msg := err.Error()
+	if idx := strings.LastIndex(msg, ": "); idx != -1 && idx+2 < len(msg) {
+		msg = strings.TrimSpace(msg[idx+2:])
+	}
+	return strings.TrimSuffix(msg, ".")
 }
 
 // sshAuthWrapper wraps an SSH auth method to apply additional crypto settings

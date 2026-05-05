@@ -1,13 +1,17 @@
 package tasks
 
 import (
+	"context"
+	"errors"
 	"path/filepath"
 	"sort"
 	"strings"
+	"testing"
 
 	"github.com/go-git/go-billy/v5/memfs"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+	"github.com/stretchr/testify/require"
 )
 
 var _ = Describe("ConvertFileSystemToIgnition", func() {
@@ -80,3 +84,61 @@ var _ = Describe("ConvertFileSystemToIgnition", func() {
 		})
 	})
 })
+
+func TestSanitizeGitError(t *testing.T) {
+	require := require.New(t)
+	tests := []struct {
+		name     string
+		input    error
+		expected string
+	}{
+		{
+			name:     "strips prefix before colon",
+			input:    errors.New("authentication required: invalid credentials"),
+			expected: "invalid credentials",
+		},
+		{
+			name:     "strips trailing period",
+			input:    errors.New("connection refused."),
+			expected: "connection refused",
+		},
+		{
+			name:     "strips prefix and trailing period",
+			input:    errors.New("authentication required: token expired."),
+			expected: "token expired",
+		},
+		{
+			name:     "passes through simple message",
+			input:    errors.New("timeout"),
+			expected: "timeout",
+		},
+		{
+			name:     "uses last colon for nested errors",
+			input:    errors.New("transport: auth: bad token https://user:pass@host.com"),
+			expected: "bad token https://user:pass@host.com",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := sanitizeGitError(tt.input)
+			require.Equal(tt.expected, result)
+		})
+	}
+}
+
+func TestGitLsRemote_EmptyURL(t *testing.T) {
+	require := require.New(t)
+	_, err := GitLsRemote(context.Background(), "", "main", nil)
+	require.Error(err)
+	require.Contains(err.Error(), "must not be empty")
+}
+
+func TestGitLsRemote_InvalidURL(t *testing.T) {
+	require := require.New(t)
+	_, err := GitLsRemote(context.Background(), "not-a-real-url://invalid", "main", nil)
+	require.Error(err)
+	require.Contains(err.Error(), "failed to list remote refs")
+	require.NotContains(err.Error(), "password")
+	require.NotContains(err.Error(), "token")
+}
