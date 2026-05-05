@@ -113,9 +113,9 @@ func TestSanitizeGitError(t *testing.T) {
 			expected: "timeout",
 		},
 		{
-			name:     "uses last colon for nested errors",
+			name:     "redacts credentials from embedded URLs",
 			input:    errors.New("transport: auth: bad token https://user:pass@host.com"),
-			expected: "bad token https://user:pass@host.com",
+			expected: "bad token https://redacted@host.com",
 		},
 	}
 
@@ -141,4 +141,40 @@ func TestGitLsRemote_InvalidURL(t *testing.T) {
 	require.Contains(err.Error(), "failed to list remote refs")
 	require.NotContains(err.Error(), "password")
 	require.NotContains(err.Error(), "token")
+}
+
+func TestRedactURL(t *testing.T) {
+	require := require.New(t)
+	tests := []struct {
+		name     string
+		input    string
+		expected string
+	}{
+		{
+			name:     "redacts user:pass",
+			input:    "https://user:secret@github.com/org/repo.git",
+			expected: "https://redacted@github.com/org/repo.git",
+		},
+		{
+			name:     "passes through URL without credentials",
+			input:    "https://github.com/org/repo.git",
+			expected: "https://github.com/org/repo.git",
+		},
+		{
+			name:     "redacts token-only auth",
+			input:    "https://ghp_secret_token@github.com/org/repo.git",
+			expected: "https://redacted@github.com/org/repo.git",
+		},
+		{
+			name:     "passes through non-URL string",
+			input:    "not-a-url",
+			expected: "not-a-url",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			require.Equal(tt.expected, redactURL(tt.input))
+		})
+	}
 }

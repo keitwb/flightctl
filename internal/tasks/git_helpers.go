@@ -9,6 +9,7 @@ import (
 	"io"
 	"io/fs"
 	"net/http"
+	"net/url"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -122,7 +123,7 @@ func GitLsRemote(ctx context.Context, repoURL string, ref string, auth transport
 		}
 	}
 
-	return "", fmt.Errorf("ref %q not found in remote %s", ref, repoURL)
+	return "", fmt.Errorf("ref %q not found in remote %s", ref, redactURL(repoURL))
 }
 
 func sanitizeGitError(err error) string {
@@ -130,7 +131,33 @@ func sanitizeGitError(err error) string {
 	if idx := strings.LastIndex(msg, ": "); idx != -1 && idx+2 < len(msg) {
 		msg = strings.TrimSpace(msg[idx+2:])
 	}
-	return strings.TrimSuffix(msg, ".")
+	msg = strings.TrimSuffix(msg, ".")
+	return redactURLsInString(msg)
+}
+
+func redactURL(raw string) string {
+	u, err := url.Parse(raw)
+	if err != nil || u.User == nil {
+		return raw
+	}
+	u.User = url.User("redacted")
+	return u.String()
+}
+
+func redactURLsInString(s string) string {
+	for _, scheme := range []string{"https://", "http://"} {
+		idx := strings.Index(s, scheme)
+		if idx == -1 {
+			continue
+		}
+		end := strings.IndexAny(s[idx:], " \t\n")
+		if end == -1 {
+			end = len(s) - idx
+		}
+		rawURL := s[idx : idx+end]
+		s = strings.Replace(s, rawURL, redactURL(rawURL), 1)
+	}
+	return s
 }
 
 // sshAuthWrapper wraps an SSH auth method to apply additional crypto settings
