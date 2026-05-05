@@ -573,7 +573,7 @@ func (d *DependenciesSync) Validate() []error {
 	}
 	var errs []error
 	if d.PollInterval != nil {
-		duration, err := time.ParseDuration(string(*d.PollInterval))
+		duration, err := time.ParseDuration(*d.PollInterval)
 		if err != nil {
 			errs = append(errs, fmt.Errorf("invalid pollInterval %q: %w", *d.PollInterval, err))
 			return errs

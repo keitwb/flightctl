@@ -11,8 +11,9 @@ import (
 // SyncState tracks the last-known fingerprint of an external dependency
 // (git ref, HTTP resource, or K8s secret) for change detection.
 type SyncState struct {
-	OrgID         uuid.UUID  `gorm:"type:uuid;primaryKey"`
-	ResourceKey   string     `gorm:"primaryKey"`
+	OrgID uuid.UUID `gorm:"type:uuid;primaryKey"`
+	// Format: "git:<repo-name>/<ref>", "http:<repo-name>/<suffix>", "secret:<namespace>/<name>"
+	ResourceKey   string `gorm:"primaryKey"`
 	Fingerprint   string
 	LastCheckedAt time.Time
 	LastChangeAt  *time.Time

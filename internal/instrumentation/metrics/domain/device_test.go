@@ -73,6 +73,10 @@ func (m *MockStore) VulnerabilityFinding() store.VulnerabilityFinding {
 	return nil
 }
 
+func (m *MockStore) SyncState() store.SyncState {
+	return nil
+}
+
 func (m *MockStore) RunMigrations(context.Context) error {
 	return nil
 }

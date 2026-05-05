@@ -37,6 +37,7 @@ func (m *MockResourceSyncStore) Organization() store.Organization               
 func (m *MockResourceSyncStore) AuthProvider() store.AuthProvider                 { return nil }
 func (m *MockResourceSyncStore) Catalog() store.Catalog                           { return nil }
 func (m *MockResourceSyncStore) VulnerabilityFinding() store.VulnerabilityFinding { return nil }
+func (m *MockResourceSyncStore) SyncState() store.SyncState                       { return nil }
 func (m *MockResourceSyncStore) RunMigrations(context.Context) error              { return nil }
 func (m *MockResourceSyncStore) Close() error                                     { return nil }
 func (m *MockResourceSyncStore) CheckHealth(context.Context) error                { return nil }
