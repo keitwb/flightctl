@@ -140,6 +140,12 @@ var _ = Describe("SyncStateStore", func() {
 			states, err := storeInst.SyncState().List(ctx, orgId)
 			Expect(err).ToNot(HaveOccurred())
 			Expect(states).To(HaveLen(3))
+
+			resourceKeys := make([]string, len(states))
+			for i, s := range states {
+				resourceKeys[i] = s.ResourceKey
+			}
+			Expect(resourceKeys).To(ConsistOf(keys))
 		})
 	})
 

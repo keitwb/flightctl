@@ -6460,6 +6460,7 @@ components:
     DependenciesSync:
       type: object
       description: Configuration for automated dependency synchronization.
+      additionalProperties: false
       properties:
         enabled:
           type: boolean

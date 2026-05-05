@@ -2322,7 +2322,6 @@ func TestRepository_Validate_BackwardCompatibility(t *testing.T) {
 }
 
 func TestDependenciesSyncValidate(t *testing.T) {
-	require := require.New(t)
 	tests := []struct {
 		name    string
 		sync    *DependenciesSync
@@ -2330,60 +2329,60 @@ func TestDependenciesSyncValidate(t *testing.T) {
 		errMsg  string
 	}{
 		{
-			name: "nil receiver produces no errors",
+			name: "When DependenciesSync is nil it should produce no errors",
 			sync: nil,
 		},
 		{
-			name: "valid 30s poll interval",
+			name: "When pollInterval is 30s it should pass validation",
 			sync: &DependenciesSync{PollInterval: lo.ToPtr(Duration("30s"))},
 		},
 		{
-			name: "valid 5m poll interval",
+			name: "When pollInterval is 5m it should pass validation",
 			sync: &DependenciesSync{PollInterval: lo.ToPtr(Duration("5m"))},
 		},
 		{
-			name: "valid 1h poll interval",
+			name: "When pollInterval is 1h it should pass validation",
 			sync: &DependenciesSync{PollInterval: lo.ToPtr(Duration("1h"))},
 		},
 		{
-			name: "valid 24h poll interval",
+			name: "When pollInterval is 24h it should pass validation",
 			sync: &DependenciesSync{PollInterval: lo.ToPtr(Duration("24h"))},
 		},
 		{
-			name: "enabled false with valid interval",
+			name: "When enabled is false with valid interval it should pass validation",
 			sync: &DependenciesSync{
 				Enabled:      lo.ToPtr(false),
 				PollInterval: lo.ToPtr(Duration("5m")),
 			},
 		},
 		{
-			name: "omitted poll interval produces no errors",
+			name: "When pollInterval is omitted it should produce no errors",
 			sync: &DependenciesSync{Enabled: lo.ToPtr(true)},
 		},
 		{
-			name: "empty struct produces no errors",
+			name: "When DependenciesSync is empty it should produce no errors",
 			sync: &DependenciesSync{},
 		},
 		{
-			name:    "poll interval below 30s",
+			name:    "When pollInterval is 10s it should reject as below minimum",
 			sync:    &DependenciesSync{PollInterval: lo.ToPtr(Duration("10s"))},
 			wantErr: true,
 			errMsg:  "below minimum",
 		},
 		{
-			name:    "poll interval 1s",
+			name:    "When pollInterval is 1s it should reject as below minimum",
 			sync:    &DependenciesSync{PollInterval: lo.ToPtr(Duration("1s"))},
 			wantErr: true,
 			errMsg:  "below minimum",
 		},
 		{
-			name:    "poll interval above 24h",
+			name:    "When pollInterval is 25h it should reject as exceeds maximum",
 			sync:    &DependenciesSync{PollInterval: lo.ToPtr(Duration("25h"))},
 			wantErr: true,
 			errMsg:  "exceeds maximum",
 		},
 		{
-			name:    "poll interval invalid format",
+			name:    "When pollInterval is invalid format it should reject",
 			sync:    &DependenciesSync{PollInterval: lo.ToPtr(Duration("abc"))},
 			wantErr: true,
 			errMsg:  "invalid pollInterval",
@@ -2392,6 +2391,7 @@ func TestDependenciesSyncValidate(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			require := require.New(t)
 			errs := tt.sync.Validate()
 			if tt.wantErr {
 				require.NotEmpty(errs, "expected validation errors")
@@ -2404,56 +2404,98 @@ func TestDependenciesSyncValidate(t *testing.T) {
 }
 
 func TestFleetValidate_DependenciesSync(t *testing.T) {
-	require := require.New(t)
-
-	fleet := Fleet{
-		ApiVersion: "v1beta1",
-		Kind:       "Fleet",
-		Metadata: ObjectMeta{
-			Name: lo.ToPtr("test-fleet"),
-		},
-		Spec: FleetSpec{
-			Template: struct {
-				Metadata *ObjectMeta `json:"metadata,omitempty"`
-				Spec     DeviceSpec  `json:"spec"`
-			}{
-				Spec: DeviceSpec{},
-			},
-			DependenciesSync: &DependenciesSync{
+	tests := []struct {
+		name         string
+		depSync      *DependenciesSync
+		wantErr      bool
+		errSubstring string
+	}{
+		{
+			name: "When fleet has invalid pollInterval it should report below minimum",
+			depSync: &DependenciesSync{
 				PollInterval: lo.ToPtr(Duration("1s")),
 			},
+			wantErr:      true,
+			errSubstring: "below minimum",
+		},
+		{
+			name:    "When fleet has nil dependenciesSync it should pass validation",
+			depSync: nil,
 		},
 	}
-	errs := fleet.Validate()
-	require.NotEmpty(errs, "expected validation error for invalid pollInterval")
 
-	found := false
-	for _, err := range errs {
-		if strings.Contains(err.Error(), "below minimum") {
-			found = true
-			break
-		}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			require := require.New(t)
+			fleet := Fleet{
+				ApiVersion: "v1beta1",
+				Kind:       "Fleet",
+				Metadata: ObjectMeta{
+					Name: lo.ToPtr("test-fleet"),
+				},
+				Spec: FleetSpec{
+					Template: struct {
+						Metadata *ObjectMeta `json:"metadata,omitempty"`
+						Spec     DeviceSpec  `json:"spec"`
+					}{
+						Spec: DeviceSpec{},
+					},
+					DependenciesSync: tt.depSync,
+				},
+			}
+			errs := fleet.Validate()
+			if tt.wantErr {
+				found := false
+				for _, err := range errs {
+					if strings.Contains(err.Error(), tt.errSubstring) {
+						found = true
+						break
+					}
+				}
+				require.True(found, "expected %q error in: %v", tt.errSubstring, errs)
+			}
+		})
 	}
-	require.True(found, "expected 'below minimum' error in: %v", errs)
 }
 
 func TestDeviceSpecValidate_DependenciesSync(t *testing.T) {
-	require := require.New(t)
-
-	spec := DeviceSpec{
-		DependenciesSync: &DependenciesSync{
-			PollInterval: lo.ToPtr(Duration("25h")),
+	tests := []struct {
+		name         string
+		depSync      *DependenciesSync
+		wantErr      bool
+		errSubstring string
+	}{
+		{
+			name: "When device spec has invalid pollInterval it should report exceeds maximum",
+			depSync: &DependenciesSync{
+				PollInterval: lo.ToPtr(Duration("25h")),
+			},
+			wantErr:      true,
+			errSubstring: "exceeds maximum",
+		},
+		{
+			name:    "When device spec has nil dependenciesSync it should pass validation",
+			depSync: nil,
 		},
 	}
-	errs := spec.Validate(false)
-	require.NotEmpty(errs, "expected validation error for invalid pollInterval")
 
-	found := false
-	for _, err := range errs {
-		if strings.Contains(err.Error(), "exceeds maximum") {
-			found = true
-			break
-		}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			require := require.New(t)
+			spec := DeviceSpec{
+				DependenciesSync: tt.depSync,
+			}
+			errs := spec.Validate(false)
+			if tt.wantErr {
+				found := false
+				for _, err := range errs {
+					if strings.Contains(err.Error(), tt.errSubstring) {
+						found = true
+						break
+					}
+				}
+				require.True(found, "expected %q error in: %v", tt.errSubstring, errs)
+			}
+		})
 	}
-	require.True(found, "expected 'exceeds maximum' error in: %v", errs)
 }
