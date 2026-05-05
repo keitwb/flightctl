@@ -5,6 +5,7 @@ package store
 import (
 	"context"
 	"errors"
+	"fmt"
 
 	"github.com/flightctl/flightctl/internal/flterrors"
 	"github.com/flightctl/flightctl/internal/store/model"
@@ -52,6 +53,9 @@ func (s *SyncStateStore) Get(ctx context.Context, orgID uuid.UUID, resourceKey s
 }
 
 func (s *SyncStateStore) Set(ctx context.Context, orgID uuid.UUID, state *model.SyncState) error {
+	if state == nil {
+		return fmt.Errorf("syncstate: Set called with nil state")
+	}
 	state.OrgID = orgID
 	return s.getDB(ctx).Save(state).Error
 }

@@ -86,7 +86,6 @@ var _ = Describe("ConvertFileSystemToIgnition", func() {
 })
 
 func TestSanitizeGitError(t *testing.T) {
-	require := require.New(t)
 	tests := []struct {
 		name     string
 		input    error
@@ -121,6 +120,7 @@ func TestSanitizeGitError(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			require := require.New(t)
 			result := sanitizeGitError(tt.input)
 			require.Equal(tt.expected, result)
 		})
@@ -144,7 +144,6 @@ func TestGitLsRemote_InvalidURL(t *testing.T) {
 }
 
 func TestRedactURL(t *testing.T) {
-	require := require.New(t)
 	tests := []struct {
 		name     string
 		input    string
@@ -174,6 +173,7 @@ func TestRedactURL(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			require := require.New(t)
 			require.Equal(tt.expected, redactURL(tt.input))
 		})
 	}

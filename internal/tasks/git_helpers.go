@@ -146,16 +146,22 @@ func redactURL(raw string) string {
 
 func redactURLsInString(s string) string {
 	for _, scheme := range []string{"https://", "http://"} {
-		idx := strings.Index(s, scheme)
-		if idx == -1 {
-			continue
+		for {
+			idx := strings.Index(s, scheme)
+			if idx == -1 {
+				break
+			}
+			end := strings.IndexAny(s[idx:], " \t\n")
+			if end == -1 {
+				end = len(s) - idx
+			}
+			rawURL := s[idx : idx+end]
+			redacted := redactURL(rawURL)
+			if rawURL == redacted {
+				break
+			}
+			s = strings.Replace(s, rawURL, redacted, 1)
 		}
-		end := strings.IndexAny(s[idx:], " \t\n")
-		if end == -1 {
-			end = len(s) - idx
-		}
-		rawURL := s[idx : idx+end]
-		s = strings.Replace(s, rawURL, redactURL(rawURL), 1)
 	}
 	return s
 }
