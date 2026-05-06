@@ -77,6 +77,10 @@ func (m *MockStore) SyncState() store.SyncState {
 	return nil
 }
 
+func (m *MockStore) DependencyRef() store.DependencyRef {
+	return nil
+}
+
 func (m *MockStore) RunMigrations(context.Context) error {
 	return nil
 }

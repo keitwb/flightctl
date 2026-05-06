@@ -34,6 +34,7 @@ type Store interface {
 	AuthProvider() AuthProvider
 	VulnerabilityFinding() VulnerabilityFinding
 	SyncState() SyncState
+	DependencyRef() DependencyRef
 	RunMigrations(context.Context) error
 	CheckHealth(context.Context) error
 	Close() error
@@ -54,6 +55,7 @@ type DataStore struct {
 	authProvider              AuthProvider
 	vulnerabilityFinding      VulnerabilityFinding
 	syncState                 SyncState
+	dependencyRef             DependencyRef
 
 	db *gorm.DB
 }
@@ -74,6 +76,7 @@ func NewStore(db *gorm.DB, log logrus.FieldLogger) Store {
 		authProvider:              NewAuthProvider(db, log),
 		vulnerabilityFinding:      NewVulnerabilityFinding(db, log),
 		syncState:                 NewSyncState(db, log),
+		dependencyRef:             NewDependencyRef(db, log),
 		db:                        db,
 	}
 }
@@ -132,6 +135,10 @@ func (s *DataStore) VulnerabilityFinding() VulnerabilityFinding {
 
 func (s *DataStore) SyncState() SyncState {
 	return s.syncState
+}
+
+func (s *DataStore) DependencyRef() DependencyRef {
+	return s.dependencyRef
 }
 
 // CheckHealth verifies database connectivity and ensures the instance is not in recovery.
@@ -219,6 +226,9 @@ func (s *DataStore) RunMigrations(ctx context.Context) error {
 		return err
 	}
 	if err := s.SyncState().InitialMigration(ctx); err != nil {
+		return err
+	}
+	if err := s.DependencyRef().InitialMigration(ctx); err != nil {
 		return err
 	}
 	return s.customizeMigration(ctx)
