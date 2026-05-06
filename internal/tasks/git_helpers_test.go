@@ -129,14 +129,21 @@ func TestSanitizeGitError(t *testing.T) {
 
 func TestGitLsRemote_EmptyURL(t *testing.T) {
 	require := require.New(t)
-	_, err := GitLsRemote(context.Background(), "", "main", nil)
+	_, err := GitLsRemote(context.Background(), "", []string{"main"}, nil)
 	require.Error(err)
 	require.Contains(err.Error(), "must not be empty")
 }
 
+func TestGitLsRemote_EmptyRefs(t *testing.T) {
+	require := require.New(t)
+	resolved, err := GitLsRemote(context.Background(), "https://example.com/repo.git", []string{}, nil)
+	require.NoError(err)
+	require.Empty(resolved)
+}
+
 func TestGitLsRemote_InvalidURL(t *testing.T) {
 	require := require.New(t)
-	_, err := GitLsRemote(context.Background(), "not-a-real-url://invalid", "main", nil)
+	_, err := GitLsRemote(context.Background(), "not-a-real-url://invalid", []string{"main"}, nil)
 	require.Error(err)
 	require.Contains(err.Error(), "failed to list remote refs")
 	require.NotContains(err.Error(), "password")

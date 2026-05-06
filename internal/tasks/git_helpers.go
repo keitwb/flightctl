@@ -90,12 +90,17 @@ func CloneGitRepo(repo *domain.Repository, revision *string, depth *int, cfg *co
 	return mfs, hash, nil
 }
 
-// GitLsRemote resolves a git ref (branch name, tag name, or full ref path)
-// to its commit SHA without cloning the repository. Error messages are
+// GitLsRemote resolves one or more git refs (branch name, tag name, or full
+// ref path) to their commit SHAs without cloning the repository. A single
+// remote.List call is made regardless of how many refs are requested. The
+// returned map contains only the refs that were found. Error messages are
 // sanitized to prevent credential leakage.
-func GitLsRemote(ctx context.Context, repoURL string, ref string, auth transport.AuthMethod) (string, error) {
+func GitLsRemote(ctx context.Context, repoURL string, refs []string, auth transport.AuthMethod) (map[string]string, error) {
 	if repoURL == "" {
-		return "", fmt.Errorf("repository URL must not be empty")
+		return nil, fmt.Errorf("repository URL must not be empty")
+	}
+	if len(refs) == 0 {
+		return map[string]string{}, nil
 	}
 
 	remote := git.NewRemote(gitmemory.NewStorage(), &gitconfig.RemoteConfig{
@@ -103,27 +108,32 @@ func GitLsRemote(ctx context.Context, repoURL string, ref string, auth transport
 		URLs: []string{repoURL},
 	})
 
-	refs, err := remote.ListContext(ctx, &git.ListOptions{Auth: auth})
+	remoteRefs, err := remote.ListContext(ctx, &git.ListOptions{Auth: auth})
 	if err != nil {
-		return "", fmt.Errorf("failed to list remote refs: %s", sanitizeGitError(err))
+		return nil, fmt.Errorf("failed to list remote refs: %s", sanitizeGitError(err))
 	}
 
-	candidates := []string{
-		ref,
-		"refs/heads/" + ref,
-		"refs/tags/" + ref,
+	wanted := make(map[string]bool, len(refs)*3)
+	refLookup := make(map[string]string, len(refs)*3)
+	for _, ref := range refs {
+		for _, candidate := range []string{ref, "refs/heads/" + ref, "refs/tags/" + ref} {
+			wanted[candidate] = true
+			refLookup[candidate] = ref
+		}
 	}
 
-	for _, r := range refs {
+	resolved := make(map[string]string, len(refs))
+	for _, r := range remoteRefs {
 		refName := r.Name().String()
-		for _, candidate := range candidates {
-			if refName == candidate {
-				return r.Hash().String(), nil
+		if wanted[refName] {
+			originalRef := refLookup[refName]
+			if _, exists := resolved[originalRef]; !exists {
+				resolved[originalRef] = r.Hash().String()
 			}
 		}
 	}
 
-	return "", fmt.Errorf("ref %q not found in remote %s", ref, redactURL(repoURL))
+	return resolved, nil
 }
 
 func sanitizeGitError(err error) string {
