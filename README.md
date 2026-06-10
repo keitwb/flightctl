@@ -202,7 +202,7 @@ See [Introduction](docs/user/introduction.md) for a full explanation of all conc
 
 Contributions are welcome! Please read [CONTRIBUTING.md](CONTRIBUTING.md) for the full workflow and then [docs/developer/README.md](docs/developer/README.md) for build and development setup.
 
-Key rules:
+Key rules for contributing:
 
 - **Signed commits** are required (GPG or SSH).
 - **Commit message prefix** — use a Jira issue key (`EDM-1234: description`) or `NO-ISSUE:` for trivial changes.
