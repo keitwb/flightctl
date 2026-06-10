@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
 
+# This outputs the current version
+
 # Fix git ownership issue in CI environments
 git config --global --add safe.directory /__w/flightctl/flightctl 2>/dev/null || true
 git config --global --add safe.directory "$(pwd)" 2>/dev/null || true
