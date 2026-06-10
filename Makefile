@@ -30,6 +30,7 @@ CACHE_FLAGS_TEMPLATE := --cache-from=$(REGISTRY)/$(REGISTRY_OWNER)/%
 
 
 ROOT_DIR := $(or ${ROOT_DIR},$(shell dirname $(realpath $(firstword $(MAKEFILE_LIST)))))
+TESTING=1
 GOBASE=$(ROOT_DIR)
 GOBIN=$(ROOT_DIR)/bin/
 GO_BUILD_FLAGS := ${GO_BUILD_FLAGS}
