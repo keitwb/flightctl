@@ -6,6 +6,7 @@ import (
 
 	apiv1alpha1 "github.com/flightctl/flightctl/api/core/v1alpha1"
 	apiv1beta1 "github.com/flightctl/flightctl/api/core/v1beta1"
+	"github.com/flightctl/flightctl/internal/domain"
 	"github.com/flightctl/flightctl/internal/transport"
 )
 
@@ -176,4 +177,8 @@ func (h *TransportHandler) PatchCatalogItem(w http.ResponseWriter, r *http.Reque
 func (h *TransportHandler) DeleteCatalogItem(w http.ResponseWriter, r *http.Request, name string, item string) {
 	status := h.catalog.DeleteCatalogItem(r.Context(), transport.OrgIDFromContext(r.Context()), name, item)
 	h.SetResponse(w, nil, status)
+}
+
+func (h *TransportHandler) GetCatalogItemDeployments(w http.ResponseWriter, r *http.Request, name string, item string) {
+	h.SetResponse(w, nil, domain.StatusNotImplemented("not yet implemented"))
 }
