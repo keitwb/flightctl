@@ -4,11 +4,16 @@ import (
 	"context"
 	"errors"
 
+	v1alpha1 "github.com/flightctl/flightctl/api/core/v1alpha1"
+	v1beta1 "github.com/flightctl/flightctl/api/core/v1beta1"
+	apiversioning "github.com/flightctl/flightctl/api/versioning"
 	"github.com/flightctl/flightctl/internal/domain"
 	"github.com/flightctl/flightctl/internal/flterrors"
 	"github.com/flightctl/flightctl/internal/service/common"
 	"github.com/flightctl/flightctl/internal/service/events"
+	"github.com/flightctl/flightctl/internal/store"
 	catalogstore "github.com/flightctl/flightctl/internal/store/catalog"
+	devicestore "github.com/flightctl/flightctl/internal/store/device"
 	"github.com/flightctl/flightctl/internal/store/selector"
 	"github.com/google/uuid"
 	"github.com/sirupsen/logrus"
@@ -16,14 +21,15 @@ import (
 )
 
 type ServiceHandler struct {
-	store  catalogstore.Store
-	events events.Service
-	log    logrus.FieldLogger
+	store       catalogstore.Store
+	deviceStore devicestore.Store
+	events      events.Service
+	log         logrus.FieldLogger
 }
 
 // NewServiceHandler creates a new catalog ServiceHandler instance.
-func NewServiceHandler(store catalogstore.Store, events events.Service, log logrus.FieldLogger) *ServiceHandler {
-	return &ServiceHandler{store: store, events: events, log: log}
+func NewServiceHandler(store catalogstore.Store, deviceStore devicestore.Store, events events.Service, log logrus.FieldLogger) *ServiceHandler {
+	return &ServiceHandler{store: store, deviceStore: deviceStore, events: events, log: log}
 }
 
 var _ Service = (*ServiceHandler)(nil)
@@ -323,6 +329,110 @@ func (h *ServiceHandler) DeleteCatalogItem(ctx context.Context, orgId uuid.UUID,
 		return domain.StatusResourceNotFound(domain.CatalogKind, catalogName)
 	}
 	return common.StoreErrorToApiStatus(err, false, domain.CatalogItemKind, &itemName)
+}
+
+func (h *ServiceHandler) GetCatalogItemDeployments(ctx context.Context, orgId uuid.UUID, catalogName string, itemName string) (*domain.CatalogItemDeploymentList, domain.Status) {
+	listParams := store.ListParams{Limit: common.MaxRecordsPerListRequest}
+
+	var deployments []domain.CatalogItemDeployment
+
+	osDevices, err := h.deviceStore.ListDevicesByOsCatalogItemRef(ctx, orgId, catalogName, itemName, listParams)
+	if err != nil {
+		return nil, domain.StatusInternalServerError(err.Error())
+	}
+	for _, dev := range osDevices.Items {
+		if dev.Spec == nil || dev.Spec.Os == nil || dev.Spec.Os.CatalogItemRef == nil {
+			continue
+		}
+		ref := dev.Spec.Os.CatalogItemRef
+		deployments = append(deployments, domain.CatalogItemDeployment{
+			ApiVersion:  apiversioning.QualifiedV1Alpha1,
+			Kind:        v1alpha1.CatalogItemDeploymentKind,
+			Catalog:     ref.Catalog,
+			CatalogItem: ref.Item,
+			Version:     ref.Version,
+			Channel:     ref.Channel,
+		})
+	}
+
+	appDevices, err := h.deviceStore.ListDevicesByAppCatalogItemRef(ctx, orgId, catalogName, itemName, listParams)
+	if err != nil {
+		return nil, domain.StatusInternalServerError(err.Error())
+	}
+	for _, dev := range appDevices.Items {
+		if dev.Spec == nil || dev.Spec.Applications == nil {
+			continue
+		}
+		for _, app := range *dev.Spec.Applications {
+			ref, appName := extractAppCatalogItemRef(&app)
+			if ref == nil || ref.Catalog != catalogName || ref.Item != itemName {
+				continue
+			}
+			deployments = append(deployments, domain.CatalogItemDeployment{
+				ApiVersion:      apiversioning.QualifiedV1Alpha1,
+				Kind:            v1alpha1.CatalogItemDeploymentKind,
+				Catalog:         ref.Catalog,
+				CatalogItem:     ref.Item,
+				Version:         ref.Version,
+				Channel:         ref.Channel,
+				ApplicationName: appName,
+			})
+		}
+	}
+
+	return &domain.CatalogItemDeploymentList{
+		ApiVersion: apiversioning.QualifiedV1Alpha1,
+		Kind:       v1alpha1.CatalogItemDeploymentListKind,
+		Items:      deployments,
+	}, domain.StatusOK()
+}
+
+func extractAppCatalogItemRef(app *domain.ApplicationProviderSpec) (*v1beta1.CatalogItemRefSpec, *string) {
+	appType, err := app.GetAppType()
+	if err != nil {
+		return nil, nil
+	}
+
+	var source v1beta1.CatalogItemRefSource
+	var name *string
+	switch appType {
+	case domain.AppTypeContainer:
+		a, err := app.AsContainerApplication()
+		if err != nil {
+			return nil, nil
+		}
+		source = &a
+		name = a.Name
+	case domain.AppTypeHelm:
+		a, err := app.AsHelmApplication()
+		if err != nil {
+			return nil, nil
+		}
+		source = &a
+		name = a.Name
+	case domain.AppTypeCompose:
+		a, err := app.AsComposeApplication()
+		if err != nil {
+			return nil, nil
+		}
+		source = &a
+		name = a.Name
+	case domain.AppTypeQuadlet:
+		a, err := app.AsQuadletApplication()
+		if err != nil {
+			return nil, nil
+		}
+		source = &a
+		name = a.Name
+	default:
+		return nil, nil
+	}
+
+	spec, err := source.AsCatalogItemRefApplicationProviderSpec()
+	if err != nil {
+		return nil, nil
+	}
+	return spec.CatalogItemRef, name
 }
 
 // callbackCatalogUpdated is the catalog-specific callback that handles catalog events

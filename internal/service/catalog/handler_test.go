@@ -3,20 +3,100 @@ package catalog
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
 	"testing"
+	"time"
 
+	v1alpha1 "github.com/flightctl/flightctl/api/core/v1alpha1"
+	v1beta1 "github.com/flightctl/flightctl/api/core/v1beta1"
+	apiversioning "github.com/flightctl/flightctl/api/versioning"
 	"github.com/flightctl/flightctl/internal/consts"
 	"github.com/flightctl/flightctl/internal/domain"
 	"github.com/flightctl/flightctl/internal/flterrors"
 	"github.com/flightctl/flightctl/internal/service/events"
 	"github.com/flightctl/flightctl/internal/store"
+	devicestore "github.com/flightctl/flightctl/internal/store/device"
 	"github.com/google/uuid"
 	"github.com/samber/lo"
 	"github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/require"
 	"gorm.io/gorm"
 )
+
+// fakeDeviceStore is a minimal in-memory implementation of devicestore.Store.
+// Only ListDevicesByOsCatalogItemRef and ListDevicesByAppCatalogItemRef have
+// meaningful implementations; everything else panics.
+type fakeDeviceStore struct {
+	osDevices  map[string]*domain.DeviceList  // key: catalog/item
+	appDevices map[string]*domain.DeviceList  // key: catalog/item
+	err        error
+}
+
+func newFakeDeviceStore() *fakeDeviceStore {
+	return &fakeDeviceStore{
+		osDevices:  make(map[string]*domain.DeviceList),
+		appDevices: make(map[string]*domain.DeviceList),
+	}
+}
+
+func (f *fakeDeviceStore) ListDevicesByOsCatalogItemRef(_ context.Context, _ uuid.UUID, catalog string, item string, _ store.ListParams) (*domain.DeviceList, error) {
+	if f.err != nil {
+		return nil, f.err
+	}
+	key := catalog + "/" + item
+	if dl, ok := f.osDevices[key]; ok {
+		return dl, nil
+	}
+	return &domain.DeviceList{}, nil
+}
+
+func (f *fakeDeviceStore) ListDevicesByAppCatalogItemRef(_ context.Context, _ uuid.UUID, catalog string, item string, _ store.ListParams) (*domain.DeviceList, error) {
+	if f.err != nil {
+		return nil, f.err
+	}
+	key := catalog + "/" + item
+	if dl, ok := f.appDevices[key]; ok {
+		return dl, nil
+	}
+	return &domain.DeviceList{}, nil
+}
+
+func (f *fakeDeviceStore) InitialMigration(context.Context) error                     { panic("not implemented") }
+func (f *fakeDeviceStore) Create(context.Context, uuid.UUID, *domain.Device, store.EventCallback) (*domain.Device, error) { panic("not implemented") }
+func (f *fakeDeviceStore) Update(context.Context, uuid.UUID, *domain.Device, []string, bool, devicestore.DeviceStoreValidationCallback, store.EventCallback) (*domain.Device, error) { panic("not implemented") }
+func (f *fakeDeviceStore) CreateOrUpdate(context.Context, uuid.UUID, *domain.Device, []string, bool, devicestore.DeviceStoreValidationCallback, store.EventCallback) (*domain.Device, bool, error) { panic("not implemented") }
+func (f *fakeDeviceStore) Get(context.Context, uuid.UUID, string) (*domain.Device, error) { panic("not implemented") }
+func (f *fakeDeviceStore) List(context.Context, uuid.UUID, devicestore.DeviceListParams) (*domain.DeviceList, error) { panic("not implemented") }
+func (f *fakeDeviceStore) Labels(context.Context, uuid.UUID, store.ListParams) (domain.LabelList, error) { panic("not implemented") }
+func (f *fakeDeviceStore) Delete(context.Context, uuid.UUID, string, store.EventCallback) (bool, error) { panic("not implemented") }
+func (f *fakeDeviceStore) UpdateStatus(context.Context, uuid.UUID, *domain.Device, store.EventCallback) (*domain.Device, error) { panic("not implemented") }
+func (f *fakeDeviceStore) GetRendered(context.Context, uuid.UUID, string, *string, string) (*domain.Device, error) { panic("not implemented") }
+func (f *fakeDeviceStore) Healthcheck(context.Context, uuid.UUID, []string) error { panic("not implemented") }
+func (f *fakeDeviceStore) ProcessAwaitingReconnectAnnotation(context.Context, uuid.UUID, string, *string) (bool, error) { panic("not implemented") }
+func (f *fakeDeviceStore) GetLastSeen(context.Context, uuid.UUID, string) (*time.Time, error) { panic("not implemented") }
+func (f *fakeDeviceStore) UpdateAnnotations(context.Context, uuid.UUID, string, map[string]string, []string) error { panic("not implemented") }
+func (f *fakeDeviceStore) MutateAnnotation(context.Context, uuid.UUID, string, string, func(string) (string, error)) error { panic("not implemented") }
+func (f *fakeDeviceStore) UpdateRendered(context.Context, uuid.UUID, string, string, string, string, string, []domain.DependencySyncConfigRefStatus, bool) (string, error) { panic("not implemented") }
+func (f *fakeDeviceStore) SetServiceConditions(context.Context, uuid.UUID, string, []domain.Condition, devicestore.ServiceConditionsCallback) error { panic("not implemented") }
+func (f *fakeDeviceStore) DecommissionDevice(context.Context, uuid.UUID, string, domain.DeviceDecommission, store.EventCallback) (*domain.Device, error) { panic("not implemented") }
+func (f *fakeDeviceStore) OverwriteRepositoryRefs(context.Context, uuid.UUID, string, ...string) error { panic("not implemented") }
+func (f *fakeDeviceStore) GetRepositoryRefs(context.Context, uuid.UUID, string) (*domain.RepositoryList, error) { panic("not implemented") }
+func (f *fakeDeviceStore) RemoveConflictPausedAnnotation(context.Context, uuid.UUID, store.ListParams) (int64, []string, error) { panic("not implemented") }
+func (f *fakeDeviceStore) SetOutOfDate(context.Context, uuid.UUID, string) error { panic("not implemented") }
+func (f *fakeDeviceStore) ListConnectivityChanged(context.Context, uuid.UUID, store.ListParams, time.Time) (*domain.DeviceList, error) { panic("not implemented") }
+func (f *fakeDeviceStore) GetWithTimestamp(context.Context, uuid.UUID, string) (*domain.Device, error) { panic("not implemented") }
+func (f *fakeDeviceStore) Count(context.Context, uuid.UUID, store.ListParams) (int64, error) { panic("not implemented") }
+func (f *fakeDeviceStore) UnmarkRolloutSelection(context.Context, uuid.UUID, string) error { panic("not implemented") }
+func (f *fakeDeviceStore) MarkRolloutSelection(context.Context, uuid.UUID, store.ListParams, *int) error { panic("not implemented") }
+func (f *fakeDeviceStore) CompletionCounts(context.Context, uuid.UUID, string, string, *time.Duration) ([]domain.DeviceCompletionCount, error) { panic("not implemented") }
+func (f *fakeDeviceStore) CountByLabels(context.Context, uuid.UUID, store.ListParams, []string) ([]map[string]any, error) { panic("not implemented") }
+func (f *fakeDeviceStore) Summary(context.Context, uuid.UUID, store.ListParams) (*domain.DevicesSummary, error) { panic("not implemented") }
+func (f *fakeDeviceStore) ListDevicesByServiceCondition(context.Context, uuid.UUID, string, string, store.ListParams) (*domain.DeviceList, error) { panic("not implemented") }
+func (f *fakeDeviceStore) SetIntegrationTestCreateOrUpdateCallback(store.IntegrationTestCallback) { panic("not implemented") }
+func (f *fakeDeviceStore) CountByOrgAndStatus(context.Context, *uuid.UUID, devicestore.DeviceStatusType, bool) ([]devicestore.CountByOrgAndStatusResult, error) { panic("not implemented") }
+
+var _ devicestore.Store = (*fakeDeviceStore)(nil)
 
 // fakeCatalogStore is a small in-memory implementation of internal/store/catalog.Store,
 // adapted from the CRUD-over-a-slice / callback-invocation behavior of
@@ -254,7 +334,13 @@ func (f *fakeEventsService) HandleGenericResourceDeletedEvents(ctx context.Conte
 func newTestHandler() (*ServiceHandler, *fakeCatalogStore, *fakeEventsService) {
 	fakeStore := newFakeCatalogStore()
 	fakeEvents := &fakeEventsService{}
-	return NewServiceHandler(fakeStore, fakeEvents, logrus.New()), fakeStore, fakeEvents
+	return NewServiceHandler(fakeStore, nil, fakeEvents, logrus.New()), fakeStore, fakeEvents
+}
+
+func newTestHandlerWithDeviceStore(ds devicestore.Store) (*ServiceHandler, *fakeCatalogStore, *fakeEventsService) {
+	fakeStore := newFakeCatalogStore()
+	fakeEvents := &fakeEventsService{}
+	return NewServiceHandler(fakeStore, ds, fakeEvents, logrus.New()), fakeStore, fakeEvents
 }
 
 func createTestCatalog(name string, owner *string) domain.Catalog {
@@ -792,6 +878,177 @@ func TestDeleteCatalogItem(t *testing.T) {
 
 			_, ok := fakeStore.items[itemKey(tt.catalogName, tt.itemName)]
 			require.Equal(t, !tt.expectItemDeleted, ok)
+		})
+	}
+}
+
+func makeContainerAppSpec(t *testing.T, catalog, item, version string, channel *string, appName *string) v1beta1.ApplicationProviderSpec {
+	t.Helper()
+	container := v1beta1.ContainerApplication{
+		AppType: v1beta1.AppTypeContainer,
+		Name:    appName,
+	}
+	err := container.FromCatalogItemRefApplicationProviderSpec(v1beta1.CatalogItemRefApplicationProviderSpec{
+		CatalogItemRef: &v1beta1.CatalogItemRefSpec{
+			Catalog: catalog,
+			Item:    item,
+			Version: version,
+			Channel: channel,
+		},
+	})
+	require.NoError(t, err)
+	var spec v1beta1.ApplicationProviderSpec
+	err = spec.FromContainerApplication(container)
+	require.NoError(t, err)
+	return spec
+}
+
+func makeDeviceWithOsRef(name, catalog, item, version string, channel *string) domain.Device {
+	return domain.Device{
+		Metadata: domain.ObjectMeta{Name: lo.ToPtr(name)},
+		Spec: &domain.DeviceSpec{
+			Os: &v1beta1.ImageOrCatalogItemRefSpec{
+				CatalogItemRef: &v1beta1.CatalogItemRefSpec{
+					Catalog: catalog,
+					Item:    item,
+					Version: version,
+					Channel: channel,
+				},
+			},
+		},
+	}
+}
+
+func TestGetCatalogItemDeployments(t *testing.T) {
+	tests := []struct {
+		name               string
+		catalogName        string
+		itemName           string
+		osDevices          []domain.Device
+		appDevices         []domain.Device
+		deviceStoreErr     error
+		expectStatusCode   int32
+		expectDeployments  int
+		expectAppNames     []string
+		expectVersions     []string
+	}{
+		{
+			name:              "When no devices reference the catalog item it should return an empty list",
+			catalogName:       "my-catalog",
+			itemName:          "my-item",
+			expectStatusCode:  http.StatusOK,
+			expectDeployments: 0,
+		},
+		{
+			name:        "When a device has an OS catalog item ref it should return one deployment",
+			catalogName: "my-catalog",
+			itemName:    "my-item",
+			osDevices: []domain.Device{
+				makeDeviceWithOsRef("dev1", "my-catalog", "my-item", "1.0.0", nil),
+			},
+			expectStatusCode:  http.StatusOK,
+			expectDeployments: 1,
+			expectVersions:    []string{"1.0.0"},
+		},
+		{
+			name:        "When a device has an app catalog item ref it should return one deployment with the app name",
+			catalogName: "my-catalog",
+			itemName:    "my-item",
+			appDevices: []domain.Device{
+				{
+					Metadata: domain.ObjectMeta{Name: lo.ToPtr("dev1")},
+				},
+			},
+			expectStatusCode:  http.StatusOK,
+			expectDeployments: 1,
+			expectAppNames:    []string{"web-app"},
+			expectVersions:    []string{"2.0.0"},
+		},
+		{
+			name:        "When devices have both OS and app catalog item refs it should return all deployments",
+			catalogName: "my-catalog",
+			itemName:    "my-item",
+			osDevices: []domain.Device{
+				makeDeviceWithOsRef("dev1", "my-catalog", "my-item", "1.0.0", lo.ToPtr("stable")),
+			},
+			appDevices: []domain.Device{
+				{
+					Metadata: domain.ObjectMeta{Name: lo.ToPtr("dev2")},
+				},
+			},
+			expectStatusCode:  http.StatusOK,
+			expectDeployments: 2,
+		},
+		{
+			name:             "When the device store returns an error it should return an internal server error",
+			catalogName:      "my-catalog",
+			itemName:         "my-item",
+			deviceStoreErr:   fmt.Errorf("db connection lost"),
+			expectStatusCode: http.StatusInternalServerError,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ds := newFakeDeviceStore()
+			ds.err = tt.deviceStoreErr
+
+			if tt.osDevices != nil {
+				ds.osDevices[tt.catalogName+"/"+tt.itemName] = &domain.DeviceList{Items: tt.osDevices}
+			}
+
+			if tt.appDevices != nil {
+				// Build actual app devices with populated spec for the app test cases
+				for i := range tt.appDevices {
+					if tt.appDevices[i].Spec == nil {
+						appName := "web-app"
+						appSpec := makeContainerAppSpec(t, tt.catalogName, tt.itemName, "2.0.0", nil, &appName)
+						tt.appDevices[i].Spec = &domain.DeviceSpec{
+							Applications: &[]v1beta1.ApplicationProviderSpec{appSpec},
+						}
+					}
+				}
+				ds.appDevices[tt.catalogName+"/"+tt.itemName] = &domain.DeviceList{Items: tt.appDevices}
+			}
+
+			h, _, _ := newTestHandlerWithDeviceStore(ds)
+			result, status := h.GetCatalogItemDeployments(context.Background(), uuid.New(), tt.catalogName, tt.itemName)
+
+			require.Equal(t, tt.expectStatusCode, status.Code)
+
+			if tt.expectStatusCode != http.StatusOK {
+				return
+			}
+
+			require.NotNil(t, result)
+			require.Equal(t, apiversioning.QualifiedV1Alpha1, result.ApiVersion)
+			require.Equal(t, v1alpha1.CatalogItemDeploymentListKind, result.Kind)
+			require.Len(t, result.Items, tt.expectDeployments)
+
+			for _, dep := range result.Items {
+				require.Equal(t, tt.catalogName, dep.Catalog)
+				require.Equal(t, tt.itemName, dep.CatalogItem)
+				require.Equal(t, apiversioning.QualifiedV1Alpha1, dep.ApiVersion)
+				require.Equal(t, v1alpha1.CatalogItemDeploymentKind, dep.Kind)
+			}
+
+			if tt.expectAppNames != nil {
+				var appNames []string
+				for _, dep := range result.Items {
+					if dep.ApplicationName != nil {
+						appNames = append(appNames, *dep.ApplicationName)
+					}
+				}
+				require.ElementsMatch(t, tt.expectAppNames, appNames)
+			}
+
+			if tt.expectVersions != nil {
+				var versions []string
+				for _, dep := range result.Items {
+					versions = append(versions, dep.Version)
+				}
+				require.ElementsMatch(t, tt.expectVersions, versions)
+			}
 		})
 	}
 }

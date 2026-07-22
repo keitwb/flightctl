@@ -6,8 +6,10 @@ const (
 	CatalogAPIVersion   = "v1alpha1"
 	CatalogKind         = "Catalog"
 	CatalogListKind     = "CatalogList"
-	CatalogItemKind     = "CatalogItem"
-	CatalogItemListKind = "CatalogItemList"
+	CatalogItemKind               = "CatalogItem"
+	CatalogItemListKind           = "CatalogItemList"
+	CatalogItemDeploymentKind     = "CatalogItemDeployment"
+	CatalogItemDeploymentListKind = "CatalogItemDeploymentList"
 
 	VulnerabilityKind              = "Vulnerability"
 	VulnerabilityListKind          = "VulnerabilityList"

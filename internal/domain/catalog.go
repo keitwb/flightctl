@@ -49,6 +49,9 @@ const (
 	CatalogItemArtifactTypeQcow2DiskContainer = v1alpha1.CatalogItemArtifactTypeQcow2DiskContainer
 )
 
+type CatalogItemDeployment = v1alpha1.CatalogItemDeployment
+type CatalogItemDeploymentList = v1alpha1.CatalogItemDeploymentList
+
 type ListCatalogsParams = v1alpha1.ListCatalogsParams
 type ListCatalogItemsParams = v1alpha1.ListCatalogItemsParams
 type ListAllCatalogItemsParams = v1alpha1.ListAllCatalogItemsParams

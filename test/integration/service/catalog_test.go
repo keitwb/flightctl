@@ -5,6 +5,7 @@ import (
 
 	api "github.com/flightctl/flightctl/api/core/v1alpha1"
 	apiv1beta1 "github.com/flightctl/flightctl/api/core/v1beta1"
+	apiversioning "github.com/flightctl/flightctl/api/versioning"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	"github.com/samber/lo"
@@ -685,6 +686,189 @@ var _ = Describe("Catalog Integration Tests", func() {
 			result, status := suite.Catalog.ListAllCatalogItems(suite.Ctx, suite.OrgID, api.ListAllCatalogItemsParams{})
 			Expect(status.Code).To(BeEquivalentTo(http.StatusOK))
 			Expect(result.Items).To(HaveLen(0))
+		})
+	})
+
+	Context("CatalogItem deployments", func() {
+		var catalogName string
+
+		BeforeEach(func() {
+			catalogName = "deploy-catalog"
+			catalog := api.Catalog{
+				Metadata: apiv1beta1.ObjectMeta{
+					Name: lo.ToPtr(catalogName),
+				},
+				Spec: api.CatalogSpec{
+					DisplayName: lo.ToPtr("Deploy Catalog"),
+				},
+			}
+			_, status := suite.Catalog.CreateCatalog(suite.Ctx, suite.OrgID, catalog)
+			Expect(status.Code).To(BeEquivalentTo(http.StatusCreated))
+		})
+
+		It("should return an empty list when no devices reference the catalog item", func() {
+			result, status := suite.Catalog.GetCatalogItemDeployments(suite.Ctx, suite.OrgID, catalogName, "nonexistent-item")
+			Expect(status.Code).To(BeEquivalentTo(http.StatusOK))
+			Expect(result).ToNot(BeNil())
+			Expect(result.ApiVersion).To(Equal(apiversioning.QualifiedV1Alpha1))
+			Expect(result.Kind).To(Equal(api.CatalogItemDeploymentListKind))
+			Expect(result.Items).To(BeEmpty())
+		})
+
+		It("should return a deployment when a device has an OS catalog item ref", func() {
+			device := apiv1beta1.Device{
+				Metadata: apiv1beta1.ObjectMeta{
+					Name: lo.ToPtr("os-ref-device"),
+				},
+				Spec: &apiv1beta1.DeviceSpec{
+					Os: &apiv1beta1.DeviceOsSpec{
+						CatalogItemRef: &apiv1beta1.CatalogItemRefSpec{
+							Catalog: catalogName,
+							Item:    "os-image",
+							Version: "9.4.0",
+							Channel: lo.ToPtr("stable"),
+						},
+					},
+				},
+			}
+			_, devStatus := suite.Device.CreateDevice(suite.Ctx, suite.OrgID, device)
+			Expect(devStatus.Code).To(BeEquivalentTo(http.StatusCreated))
+
+			result, status := suite.Catalog.GetCatalogItemDeployments(suite.Ctx, suite.OrgID, catalogName, "os-image")
+			Expect(status.Code).To(BeEquivalentTo(http.StatusOK))
+			Expect(result.Items).To(HaveLen(1))
+			Expect(result.Items[0].Catalog).To(Equal(catalogName))
+			Expect(result.Items[0].CatalogItem).To(Equal("os-image"))
+			Expect(result.Items[0].Version).To(Equal("9.4.0"))
+			Expect(result.Items[0].Channel).To(HaveValue(Equal("stable")))
+			Expect(result.Items[0].ApplicationName).To(BeNil())
+		})
+
+		It("should return a deployment when a device has an app catalog item ref", func() {
+			container := apiv1beta1.ContainerApplication{
+				AppType: apiv1beta1.AppTypeContainer,
+				Name:    lo.ToPtr("my-web-app"),
+			}
+			err := container.FromCatalogItemRefApplicationProviderSpec(apiv1beta1.CatalogItemRefApplicationProviderSpec{
+				CatalogItemRef: &apiv1beta1.CatalogItemRefSpec{
+					Catalog: catalogName,
+					Item:    "web-server",
+					Version: "2.1.0",
+				},
+			})
+			Expect(err).ToNot(HaveOccurred())
+
+			var appSpec apiv1beta1.ApplicationProviderSpec
+			err = appSpec.FromContainerApplication(container)
+			Expect(err).ToNot(HaveOccurred())
+
+			device := apiv1beta1.Device{
+				Metadata: apiv1beta1.ObjectMeta{
+					Name: lo.ToPtr("app-ref-device"),
+				},
+				Spec: &apiv1beta1.DeviceSpec{
+					Applications: &[]apiv1beta1.ApplicationProviderSpec{appSpec},
+				},
+			}
+			_, devStatus := suite.Device.CreateDevice(suite.Ctx, suite.OrgID, device)
+			Expect(devStatus.Code).To(BeEquivalentTo(http.StatusCreated))
+
+			result, status := suite.Catalog.GetCatalogItemDeployments(suite.Ctx, suite.OrgID, catalogName, "web-server")
+			Expect(status.Code).To(BeEquivalentTo(http.StatusOK))
+			Expect(result.Items).To(HaveLen(1))
+			Expect(result.Items[0].Catalog).To(Equal(catalogName))
+			Expect(result.Items[0].CatalogItem).To(Equal("web-server"))
+			Expect(result.Items[0].Version).To(Equal("2.1.0"))
+			Expect(result.Items[0].ApplicationName).To(HaveValue(Equal("my-web-app")))
+		})
+
+		It("should return deployments from both OS and app refs across devices", func() {
+			// Device 1: OS catalog ref
+			osDevice := apiv1beta1.Device{
+				Metadata: apiv1beta1.ObjectMeta{
+					Name: lo.ToPtr("combined-os-device"),
+				},
+				Spec: &apiv1beta1.DeviceSpec{
+					Os: &apiv1beta1.DeviceOsSpec{
+						CatalogItemRef: &apiv1beta1.CatalogItemRefSpec{
+							Catalog: catalogName,
+							Item:    "multi-item",
+							Version: "1.0.0",
+						},
+					},
+				},
+			}
+			_, devStatus := suite.Device.CreateDevice(suite.Ctx, suite.OrgID, osDevice)
+			Expect(devStatus.Code).To(BeEquivalentTo(http.StatusCreated))
+
+			// Device 2: app catalog ref to the same item
+			container := apiv1beta1.ContainerApplication{
+				AppType: apiv1beta1.AppTypeContainer,
+				Name:    lo.ToPtr("sidecar"),
+			}
+			err := container.FromCatalogItemRefApplicationProviderSpec(apiv1beta1.CatalogItemRefApplicationProviderSpec{
+				CatalogItemRef: &apiv1beta1.CatalogItemRefSpec{
+					Catalog: catalogName,
+					Item:    "multi-item",
+					Version: "1.0.0",
+				},
+			})
+			Expect(err).ToNot(HaveOccurred())
+			var appSpec apiv1beta1.ApplicationProviderSpec
+			err = appSpec.FromContainerApplication(container)
+			Expect(err).ToNot(HaveOccurred())
+
+			appDevice := apiv1beta1.Device{
+				Metadata: apiv1beta1.ObjectMeta{
+					Name: lo.ToPtr("combined-app-device"),
+				},
+				Spec: &apiv1beta1.DeviceSpec{
+					Applications: &[]apiv1beta1.ApplicationProviderSpec{appSpec},
+				},
+			}
+			_, devStatus = suite.Device.CreateDevice(suite.Ctx, suite.OrgID, appDevice)
+			Expect(devStatus.Code).To(BeEquivalentTo(http.StatusCreated))
+
+			result, status := suite.Catalog.GetCatalogItemDeployments(suite.Ctx, suite.OrgID, catalogName, "multi-item")
+			Expect(status.Code).To(BeEquivalentTo(http.StatusOK))
+			Expect(result.Items).To(HaveLen(2))
+
+			var hasOsDep, hasAppDep bool
+			for _, dep := range result.Items {
+				Expect(dep.Catalog).To(Equal(catalogName))
+				Expect(dep.CatalogItem).To(Equal("multi-item"))
+				if dep.ApplicationName == nil {
+					hasOsDep = true
+				} else {
+					hasAppDep = true
+					Expect(*dep.ApplicationName).To(Equal("sidecar"))
+				}
+			}
+			Expect(hasOsDep).To(BeTrue())
+			Expect(hasAppDep).To(BeTrue())
+		})
+
+		It("should not return devices that reference a different catalog item", func() {
+			device := apiv1beta1.Device{
+				Metadata: apiv1beta1.ObjectMeta{
+					Name: lo.ToPtr("other-item-device"),
+				},
+				Spec: &apiv1beta1.DeviceSpec{
+					Os: &apiv1beta1.DeviceOsSpec{
+						CatalogItemRef: &apiv1beta1.CatalogItemRefSpec{
+							Catalog: catalogName,
+							Item:    "different-item",
+							Version: "1.0.0",
+						},
+					},
+				},
+			}
+			_, devStatus := suite.Device.CreateDevice(suite.Ctx, suite.OrgID, device)
+			Expect(devStatus.Code).To(BeEquivalentTo(http.StatusCreated))
+
+			result, status := suite.Catalog.GetCatalogItemDeployments(suite.Ctx, suite.OrgID, catalogName, "target-item")
+			Expect(status.Code).To(BeEquivalentTo(http.StatusOK))
+			Expect(result.Items).To(BeEmpty())
 		})
 	})
 
