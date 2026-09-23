@@ -3,11 +3,15 @@ package systeminfo
 import (
 	"fmt"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 
+	"github.com/ccoveille/go-safecast"
+	"github.com/flightctl/flightctl/api/core/v1beta1"
 	"github.com/flightctl/flightctl/internal/agent/device/fileio"
 	"github.com/flightctl/flightctl/pkg/log"
+	"github.com/samber/lo"
 	"sigs.k8s.io/yaml"
 )
 
@@ -360,4 +364,102 @@ func getGPUMemory(devicePath string, reader fileio.Reader, log *log.PrefixLogger
 	}
 
 	return 0 // No memory info found
+}
+
+// deviceSystemInfoGPU is a type alias for the anonymous GPU entry generated for
+// v1beta1.DeviceSystemInfo.Gpus. Aliasing lets us build entries with a named
+// literal while staying assignable to the generated field.
+type deviceSystemInfoGPU = struct {
+	// Arch The GPU architecture.
+	Arch *string `json:"arch,omitempty"`
+
+	// DeviceId The PCI device ID of the GPU.
+	DeviceId *string `json:"deviceId,omitempty"`
+
+	// Features The list of supported GPU features.
+	Features *[]string `json:"features,omitempty"`
+
+	// Index The index of the GPU device on the system.
+	Index *int `json:"index,omitempty"`
+
+	// MemoryBytes The amount of GPU memory in bytes.
+	MemoryBytes *int64 `json:"memoryBytes,omitempty"`
+
+	// Model The GPU model name.
+	Model *string `json:"model,omitempty"`
+
+	// PciAddress The PCI bus address of the GPU.
+	PciAddress *string `json:"pciAddress,omitempty"`
+
+	// RevisionId The PCI revision ID of the GPU.
+	RevisionId *string `json:"revisionId,omitempty"`
+
+	// Vendor The GPU vendor name.
+	Vendor *string `json:"vendor,omitempty"`
+
+	// VendorId The PCI vendor ID of the GPU.
+	VendorId *string `json:"vendorId,omitempty"`
+}
+
+// applyGPUSystemInfo records the structured GPU inventory on the device system
+// info. GPUs are enumerated even when the "gpu" info key is not configured so
+// the gpu.present device feature is always reported.
+func applyGPUSystemInfo(log *log.PrefixLogger, reader fileio.Reader, hardwareMapPath string, info *Info, s *v1beta1.DeviceSystemInfo) {
+	gpus := info.Hardware.GPU
+	if gpus == nil {
+		// The GPU collector did not run (the "gpu" info key is not configured),
+		// so enumerate GPUs directly. Collection is best effort.
+		collected, err := collectGPUInfo(log, reader, hardwareMapPath)
+		if err != nil {
+			// Leave s.Gpus unset (nil) on scan failure. Reporting an empty list
+			// here would be indistinguishable from a successful scan that found
+			// zero GPUs and would incorrectly clear the gpu.present feature.
+			log.Warnf("Failed to collect GPU info for system info: %v", err)
+			return
+		}
+		gpus = collected
+	}
+	s.Gpus = toDeviceSystemInfoGPUs(gpus)
+}
+
+// toDeviceSystemInfoGPUs converts the collected GPU inventory into the API GPU
+// list. The returned pointer is always non-nil (possibly an empty list) so the
+// gpu.present feature can be derived deterministically.
+func toDeviceSystemInfoGPUs(gpus []GPUDeviceInfo) *[]deviceSystemInfoGPU {
+	out := make([]deviceSystemInfoGPU, 0, len(gpus))
+	for _, gpu := range gpus {
+		entry := deviceSystemInfoGPU{Index: lo.ToPtr(gpu.Index)}
+		if gpu.PCIAddress != "" {
+			entry.PciAddress = lo.ToPtr(gpu.PCIAddress)
+		}
+		if gpu.Vendor != "" {
+			entry.Vendor = lo.ToPtr(gpu.Vendor)
+		}
+		if gpu.Model != "" {
+			entry.Model = lo.ToPtr(gpu.Model)
+		}
+		if gpu.DeviceID != "" {
+			entry.DeviceId = lo.ToPtr(gpu.DeviceID)
+		}
+		if gpu.VendorID != "" {
+			entry.VendorId = lo.ToPtr(gpu.VendorID)
+		}
+		if gpu.RevisionID != "" {
+			entry.RevisionId = lo.ToPtr(gpu.RevisionID)
+		}
+		if gpu.Arch != "" {
+			entry.Arch = lo.ToPtr(gpu.Arch)
+		}
+		if len(gpu.Features) > 0 {
+			entry.Features = lo.ToPtr(slices.Clone(gpu.Features))
+		}
+		if gpu.MemoryBytes > 0 {
+			// Guard the uint64 -> int64 conversion against overflow.
+			if mem, err := safecast.ToInt64(gpu.MemoryBytes); err == nil {
+				entry.MemoryBytes = lo.ToPtr(mem)
+			}
+		}
+		out = append(out, entry)
+	}
+	return &out
 }

@@ -183,6 +183,7 @@ func (m *manager) Status(ctx context.Context, deviceStatus *v1beta1.DeviceStatus
 		m.collect(ctx)
 	}
 	deviceStatus.SystemInfo, deviceStatus.SystemInfoStatus = m.systemInfoFromCache()
+	m.applyDeviceFeatures(&deviceStatus.SystemInfo)
 
 	return nil
 }
@@ -400,6 +401,26 @@ func (m *manager) systemInfoFromCache() (v1beta1.DeviceSystemInfo, *v1beta1.Devi
 		Statuses: statuses,
 		Summary:  v1beta1.DeviceSystemInfoSummaryStatus{Status: summary},
 	}
+}
+
+// applyDeviceFeatures augments the cached system info with the structured
+// device features (GPU inventory and KVM availability) that must always be
+// reported so feature matching (gpu.present, kvm.enabled) can rely on them,
+// regardless of which info keys are configured.
+//
+// It must be called WITHOUT holding m.mu: it calls infoFromCache (which
+// acquires m.mu) and performs best-effort filesystem reads. Performing this
+// work inline while systemInfoFromCache held m.mu self-deadlocked on the
+// non-reentrant mutex. readWriter is nil only in unit tests that construct the
+// manager struct directly; skip the feature scan in that case.
+func (m *manager) applyDeviceFeatures(systemInfo *v1beta1.DeviceSystemInfo) {
+	if m.readWriter == nil {
+		return
+	}
+	info := m.infoFromCache()
+	hardwareMapPath := filepath.Join(m.dataDir, HardwareMapFileName)
+	applyGPUSystemInfo(m.log, m.readWriter, hardwareMapPath, info, systemInfo)
+	applyKVMSystemInfo(m.log, m.readWriter, systemInfo)
 }
 
 // defaultSystemInfo returns the default system info.
