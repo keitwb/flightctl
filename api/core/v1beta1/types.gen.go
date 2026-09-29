@@ -1429,7 +1429,8 @@ type DeviceApplicationsSummaryStatus struct {
 
 // DeviceCapabilities Capabilities reported by the device agent.
 type DeviceCapabilities struct {
-	// OsMode OS management mode. "image" indicates the OS is managed via bootc or rpm-ostree image updates. "package" indicates no image-based OS management is available.
+	// OsMode Deprecated since v1.4 and will be removed in a future release. Use status.systemInfo.osMode instead. The service reads status.systemInfo.osMode and only falls back to this field for devices reported by older agents that do not populate systemInfo.
+	// Deprecated: Deprecated since v1.4 and will be removed in a future release. Use status.systemInfo.osMode instead.
 	OsMode *OsModeType `json:"osMode,omitempty"`
 }
 
@@ -1905,7 +1906,7 @@ type DevicesSummary struct {
 
 // DevicesSummaryCapabilities Breakdowns of devices by status.capabilities fields.
 type DevicesSummaryCapabilities struct {
-	// OsMode Counts by status.capabilities.osMode (e.g. image, package). The key "unknown" counts devices that have not reported the capability.
+	// OsMode Counts by device OS mode (e.g. image, package), taken from status.systemInfo.osMode with fallback to the deprecated status.capabilities.osMode. The key "unknown" counts devices that have not reported an OS mode.
 	OsMode *map[string]int64 `json:"osMode,omitempty"`
 }
 
